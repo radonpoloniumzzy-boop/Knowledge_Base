@@ -22,6 +22,40 @@
   <div class="metric"><span>待复核</span><strong>{{ stats.review }}</strong></div>
 </section>
 
+<section class="forge-flow" aria-labelledby="forge-flow-title">
+  <div class="forge-flow-intro">
+    <p class="forge-flow-kicker">Process / 04</p>
+    <h2 id="forge-flow-title">知识炼制流</h2>
+    <span>从原始资料到可交付的知识能力</span>
+  </div>
+  <div class="forge-flow-track">
+    <a class="forge-step" href="/library">
+      <span class="forge-step-index">01</span>
+      <svg class="app-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
+      <span>原始资料</span>
+      <strong>{{ stats.files }}</strong>
+    </a>
+    <a class="forge-step" href="/library">
+      <span class="forge-step-index">02</span>
+      <svg class="app-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15l2 2 4-4"/></svg>
+      <span>标准文档</span>
+      <strong>{{ stats.standard }}</strong>
+    </a>
+    <a class="forge-step" href="/library">
+      <span class="forge-step-index">03</span>
+      <svg class="app-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m12 3-1.9 4.8L5 10l5.1 2.2L12 17l1.9-4.8L19 10l-5.1-2.2L12 3z"/><path d="m5 3-.6 1.4L3 5l1.4.6L5 7l.6-1.4L7 5l-1.4-.6L5 3zM19 17l-.9 2.1L16 20l2.1.9L19 23l.9-2.1L22 20l-2.1-.9L19 17z"/></svg>
+      <span>知识增强</span>
+      <strong>{{ stats.sop + stats.insight }}</strong>
+    </a>
+    <a class="forge-step" href="/packs">
+      <span class="forge-step-index">04</span>
+      <svg class="app-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4z"/><path d="m4 12 8 4 8-4M4 17l8 4 8-4"/></svg>
+      <span>能力包</span>
+      <strong>{{ stats.packs }}</strong>
+    </a>
+  </div>
+</section>
+
 <section class="layout-two">
   <div class="panel">
     <div class="panel-head">
