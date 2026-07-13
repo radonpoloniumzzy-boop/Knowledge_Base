@@ -24,6 +24,14 @@ def test_domain_crud_replaces_selected_rules_without_touching_tags(tmp_path, mon
     domain_id = services.save_knowledge_domain(
         None, "Visual Craft", "wine", ["08_Art"], ["08_Art/Color"]
     )
+    with connect(database_path) as conn:
+        created_prefixes = {
+            row[0] for row in conn.execute(
+                "SELECT match_value FROM knowledge_domain_rules WHERE domain_id=? AND rule_type='tag_prefix'",
+                (domain_id,),
+            )
+        }
+    assert created_prefixes == {"08_Art/Color", "08_Art/Color_Intel"}
     services.save_knowledge_domain(
         domain_id, "Visual Practice", "brass", ["08_Art"], []
     )
@@ -34,7 +42,8 @@ def test_domain_crud_replaces_selected_rules_without_touching_tags(tmp_path, mon
     assert domain["domain"]["name"] == "Visual Practice"
     assert domain["domain"]["enabled"] == 0
     assert [(rule["rule_type"], rule["match_value"]) for rule in domain["rules"]] == [
-        ("main_category", "08_Art")
+        ("main_category", "08_Art"),
+        ("main_category", "08_Art_Intel"),
     ]
 
     services.delete_knowledge_domain(domain_id)

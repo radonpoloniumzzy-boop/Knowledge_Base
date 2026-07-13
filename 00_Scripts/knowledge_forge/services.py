@@ -1526,16 +1526,18 @@ def settings_data(tag_q: str = "", tag_usage: str = "all") -> dict[str, Any]:
             tag_params,
         ).fetchall()
         settings = conn.execute("SELECT * FROM settings ORDER BY key").fetchall()
-        main_categories = [
+        raw_main_categories = [
             row["main_category"] for row in conn.execute(
                 "SELECT DISTINCT main_category FROM files WHERE main_category IS NOT NULL AND main_category<>'' ORDER BY main_category"
             )
         ]
-        tag_roots = [
+        main_categories = sorted({category.removesuffix("_Intel") for category in raw_main_categories})
+        raw_tag_roots = [
             row["root"] for row in conn.execute(
                 "SELECT DISTINCT CASE WHEN instr(name, '/')>0 THEN substr(name, 1, instr(name, '/')-1) ELSE name END AS root FROM tags ORDER BY root"
             )
         ]
+        tag_roots = sorted({root.removesuffix("_Intel") for root in raw_tag_roots})
         migration_runs = conn.execute(
             "SELECT * FROM legacy_migration_runs ORDER BY id DESC LIMIT 5"
         ).fetchall()
@@ -1586,7 +1588,17 @@ def save_knowledge_domain(
                 (name, accent, domain_id),
             )
             conn.execute("DELETE FROM knowledge_domain_rules WHERE domain_id=?", (domain_id,))
-        for rule_type, values in (("main_category", main_categories), ("tag_prefix", tag_prefixes)):
+        def paired_roots(values: list[str]) -> list[str]:
+            paired = []
+            for value in values:
+                base = value.strip().removesuffix("_Intel")
+                if base:
+                    paired.extend((base, f"{base}_Intel"))
+            return paired
+
+        normalized_categories = paired_roots(main_categories)
+        normalized_prefixes = paired_roots(tag_prefixes)
+        for rule_type, values in (("main_category", normalized_categories), ("tag_prefix", normalized_prefixes)):
             for value in dict.fromkeys(item.strip() for item in values if item.strip()):
                 conn.execute(
                     "INSERT OR IGNORE INTO knowledge_domain_rules(domain_id, rule_type, match_value) VALUES (?, ?, ?)",
