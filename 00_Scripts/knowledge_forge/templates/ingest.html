@@ -1,50 +1,45 @@
 {% extends "base.html" %}
 {% block title %}资料导入 - 知识炼制台{% endblock %}
 {% block content %}
-<section class="page-head">
+<section class="page-head alchemy-head">
   <div>
-    <p class="eyebrow">Ingestion</p>
-    <h1>资料导入</h1>
-    <p>核心处理成功后资料立即成为“可用·未复核”；分类、标签和衍生产物随后独立生成。</p>
+    <p class="eyebrow">Alchemy chamber</p>
+    <h1>炼金炉资料导入</h1>
+    <p>核心处理成功后资料立即可用；分类、标签、SOP 与 Insight 随后独立炼制。</p>
   </div>
 </section>
 
-<section class="upload-band">
-  <form class="upload-box" action="/ingest/upload" method="post" enctype="multipart/form-data">
-    <input id="files" type="file" name="files" multiple>
-    <label for="files">
-      <strong>选择或拖放资料</strong>
-      <span>支持 md、txt、pdf、doc、docx、ppt、xlsx 等；视频/音频转写入口后续接入。</span>
+<section class="alchemy-workbench" data-alchemy-forge data-forge-state="idle">
+  <div class="alchemy-visual" aria-hidden="true">
+    <div class="alchemy-sigil"><span></span><i></i></div>
+    <div class="alchemy-vessel">
+      <div class="vessel-rim"></div>
+      <div class="vessel-brew"><i></i><i></i><i></i></div>
+      <div class="vessel-body"><span class="vessel-mark">KF</span></div>
+    </div>
+    <div class="alchemy-flame"><i></i><i></i><i></i></div>
+    <div class="alchemy-embers"><i></i><i></i><i></i><i></i></div>
+  </div>
+  <form class="upload-box alchemy-upload" action="/ingest/upload" method="post" enctype="multipart/form-data" data-upload-form>
+    <p class="alchemy-state-label" data-forge-label>炉火待命</p>
+    <label class="alchemy-dropzone" for="files" data-dropzone>
+      <svg class="guild-icon" aria-hidden="true"><use href="/static/guild-icons.svg#ingest"></use></svg>
+      <strong>选择或拖放资料入炉</strong>
+      <span>支持 md、txt、pdf、doc、docx、ppt、xlsx 等文档格式</span>
+      <em data-file-selection>尚未选择文件</em>
     </label>
-    <button class="btn primary" type="submit">加入任务队列</button>
+    <input class="sr-only" id="files" type="file" name="files" multiple data-file-input>
+    <button class="btn primary" type="submit">加入炼制队列</button>
   </form>
 </section>
 
-<section class="panel">
+<section class="panel process-panel">
   <div class="panel-head">
-    <h2>工作进程</h2>
+    <div><p class="panel-kicker">Persistent process</p><h2>工作进程</h2></div>
     <span id="job-refresh-status">自动更新</span>
   </div>
   <div id="job-queue">
     {% include "_job_queue.html" %}
   </div>
 </section>
-
-<script>
-  (function () {
-    const queue = document.getElementById("job-queue");
-    const status = document.getElementById("job-refresh-status");
-    async function refreshJobs() {
-      try {
-        const response = await fetch("/ingest/jobs", { cache: "no-store" });
-        if (!response.ok) throw new Error("refresh failed");
-        queue.innerHTML = await response.text();
-        status.textContent = "刚刚更新";
-      } catch (error) {
-        status.textContent = "更新失败，正在重试";
-      }
-    }
-    window.setInterval(refreshJobs, 2000);
-  })();
-</script>
 {% endblock %}

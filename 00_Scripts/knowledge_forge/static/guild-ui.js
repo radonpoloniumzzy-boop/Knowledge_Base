@@ -32,6 +32,91 @@
     });
 
     if (document.body.dataset.page === "dashboard") initDashboard();
+    if (document.body.dataset.page === "ingest") initIngest();
+  }
+
+  function initIngest() {
+    const forge = document.querySelector("[data-alchemy-forge]");
+    const queueHost = document.getElementById("job-queue");
+    const refreshStatus = document.getElementById("job-refresh-status");
+    const form = document.querySelector("[data-upload-form]");
+    const input = form?.querySelector("[data-file-input]");
+    const dropzone = form?.querySelector("[data-dropzone]");
+    const selection = form?.querySelector("[data-file-selection]");
+    if (!forge || !queueHost || !form || !input || !dropzone) return;
+
+    const labels = {
+      idle: "炉火待命",
+      drag: "炉火已增强，松手即可接收",
+      waiting: "预热中，等待炼制",
+      processing: "知识正在炼制",
+      paused: "炉火收束为余烬",
+      needs_attention: "炉火已停止，请处理异常",
+      completed: "炼制完成，正在冷却",
+    };
+    let lastServerState = null;
+    let coolingTimer = null;
+
+    function setForgeState(state) {
+      forge.dataset.forgeState = state;
+      const label = forge.querySelector("[data-forge-label]");
+      if (label) label.textContent = labels[state] || labels.idle;
+    }
+
+    function syncForgeState() {
+      const fragment = queueHost.querySelector("[data-job-queue]");
+      const serverState = fragment?.dataset.queueState || "idle";
+      window.clearTimeout(coolingTimer);
+      if (serverState === "completed") {
+        if (lastServerState !== "completed") {
+          setForgeState("completed");
+          coolingTimer = window.setTimeout(() => setForgeState("idle"), 1600);
+        } else {
+          setForgeState("idle");
+        }
+      } else {
+        setForgeState(serverState);
+      }
+      lastServerState = serverState;
+    }
+
+    function showSelection() {
+      const count = input.files?.length || 0;
+      if (selection) selection.textContent = count ? `已选择 ${count} 个文件` : "尚未选择文件";
+      if (count) setForgeState("waiting");
+    }
+
+    ["dragenter", "dragover"].forEach((name) => dropzone.addEventListener(name, (event) => {
+      event.preventDefault();
+      setForgeState("drag");
+      dropzone.classList.add("is-dragging");
+    }));
+    dropzone.addEventListener("dragleave", () => {
+      dropzone.classList.remove("is-dragging");
+      window.setTimeout(() => input.files?.length ? setForgeState("waiting") : syncForgeState(), 0);
+    });
+    dropzone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      dropzone.classList.remove("is-dragging");
+      if (event.dataTransfer?.files?.length) input.files = event.dataTransfer.files;
+      showSelection();
+    });
+    input.addEventListener("change", showSelection);
+
+    async function refreshJobs() {
+      try {
+        const response = await fetch("/ingest/jobs", { cache: "no-store" });
+        if (!response.ok) throw new Error("refresh failed");
+        queueHost.innerHTML = await response.text();
+        refreshStatus.textContent = "刚刚更新";
+        syncForgeState();
+      } catch (_error) {
+        refreshStatus.textContent = "更新失败，正在重试";
+      }
+    }
+
+    syncForgeState();
+    window.setInterval(refreshJobs, 2000);
   }
 
   function initDashboard() {

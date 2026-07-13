@@ -1,3 +1,13 @@
+{% if job_summary.needs_attention %}{% set queue_state = 'needs_attention' %}
+{% elif job_summary.processing %}{% set queue_state = 'processing' %}
+{% elif job_summary.waiting %}{% set queue_state = 'waiting' %}
+{% elif job_summary.paused %}{% set queue_state = 'paused' %}
+{% elif job_summary.completed %}{% set queue_state = 'completed' %}
+{% else %}{% set queue_state = 'idle' %}{% endif %}
+<div class="job-queue-fragment" data-job-queue data-queue-state="{{ queue_state }}"
+     data-waiting="{{ job_summary.waiting }}" data-processing="{{ job_summary.processing }}"
+     data-paused="{{ job_summary.paused }}" data-completed="{{ job_summary.completed }}"
+     data-needs-attention="{{ job_summary.needs_attention }}">
 <div class="job-summary">
   <span><strong>{{ job_summary.waiting }}</strong> 排队</span>
   <span><strong>{{ job_summary.processing }}</strong> 处理中</span>
@@ -8,7 +18,7 @@
 
 <div class="job-list">
   {% for job in jobs %}
-  <article class="job-item {{ job.status }}">
+  <article class="job-item {{ job.status }}" data-task-id="{{ job.id }}" data-task-state="{{ job.status }}" data-stage="{{ job.step or '' }}">
     <div class="job-main">
       <div>
         <strong>{{ job.file_name or '系统任务' }}</strong>
@@ -65,4 +75,5 @@
   {% else %}
   <div class="empty">暂无导入任务。</div>
   {% endfor %}
+</div>
 </div>

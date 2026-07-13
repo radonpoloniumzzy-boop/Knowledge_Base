@@ -120,6 +120,10 @@ def test_job_fragment_shows_actionable_message_without_raw_exception(monkeypatch
     assert "文档内容为空，请更换文件。" in response.text
     assert "ValueError" not in response.text
     assert "继续" in response.text
+    assert 'data-job-queue' in response.text
+    assert 'data-queue-state="needs_attention"' in response.text
+    assert 'data-task-state="needs_attention"' in response.text
+    assert 'data-stage="quality_validation"' in response.text
 
 
 def test_single_duplicate_upload_redirects_to_existing_knowledge_entry(monkeypatch):

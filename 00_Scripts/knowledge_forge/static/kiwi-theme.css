@@ -271,6 +271,54 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
 .upload-box label strong { font-size: 19px; }
 .upload-box label span { color: var(--kf-ink-soft); }
 
+/* Ingest: a functional alchemy chamber driven by persisted queue state. */
+.alchemy-head .eyebrow { color: var(--kf-alchemy-copper); }
+.alchemy-workbench { position: relative; display: grid; grid-template-columns: minmax(300px, .72fr) minmax(380px, 1.28fr); min-height: 350px; margin-bottom: 14px; overflow: hidden; border: 1px solid #47675d; border-radius: var(--kf-radius); background: linear-gradient(120deg, #17372f 0%, #225646 44%, #754b39 125%); box-shadow: 0 16px 34px rgba(37, 70, 59, .16); }
+.alchemy-workbench::before { content: ""; position: absolute; inset: 0; opacity: .24; pointer-events: none; background-image: linear-gradient(30deg, transparent 48%, rgba(214, 175, 128, .18) 49%, transparent 50%), linear-gradient(150deg, transparent 48%, rgba(101, 185, 154, .16) 49%, transparent 50%); background-size: 54px 54px; }
+.alchemy-visual { position: relative; min-height: 350px; border-right: 1px solid rgba(206, 226, 215, .14); }
+.alchemy-sigil { position: absolute; left: 50%; top: 46%; width: 230px; height: 230px; transform: translate(-50%, -50%) rotate(45deg); border: 1px solid rgba(111, 195, 164, .2); }
+.alchemy-sigil span, .alchemy-sigil i { position: absolute; inset: 28px; border: 1px solid rgba(202, 150, 112, .22); }
+.alchemy-sigil i { inset: 62px; border-radius: 50%; }
+.alchemy-vessel { position: absolute; z-index: 2; left: 50%; top: 44%; width: 190px; height: 170px; transform: translate(-50%, -50%); }
+.vessel-rim { position: absolute; z-index: 3; left: 15px; right: 15px; top: 20px; height: 35px; border: 3px solid #b37452; border-radius: 50%; background: #1c3d35; box-shadow: inset 0 0 0 5px #285947, 0 5px 12px rgba(0,0,0,.22); }
+.vessel-brew { position: absolute; z-index: 4; left: 25px; right: 25px; top: 29px; height: 19px; overflow: hidden; border-radius: 50%; background: #5ab895; box-shadow: 0 0 18px rgba(83, 207, 161, .48); }
+.vessel-brew i { position: absolute; bottom: 2px; width: 8px; height: 8px; border: 1px solid #c9ffe9; border-radius: 50%; animation: brew-bubble 2.2s ease-in infinite; }
+.vessel-brew i:nth-child(1) { left: 25%; animation-delay: -.7s; }.vessel-brew i:nth-child(2) { left: 50%; animation-delay: -1.4s; }.vessel-brew i:nth-child(3) { left: 72%; }
+.vessel-body { position: absolute; left: 24px; right: 24px; top: 38px; bottom: 0; display: grid; place-items: center; border: 2px solid #8e5b44; border-top: 0; border-radius: 20% 20% 44% 44%; background: linear-gradient(130deg, #234d40, #132e28 58%, #623c30); box-shadow: inset 14px 0 22px rgba(97, 181, 148, .12), inset -12px 0 20px rgba(197, 113, 76, .14), 0 18px 26px rgba(0,0,0,.3); }
+.vessel-mark { display: grid; place-items: center; width: 44px; height: 44px; transform: rotate(45deg); border: 1px solid rgba(212, 161, 119, .55); color: #d9a47d; font: 700 11px/1 Consolas, monospace; }
+.vessel-mark::first-letter { color: #82d1b4; }
+.alchemy-flame { position: absolute; z-index: 1; left: 50%; top: 73%; display: flex; align-items: flex-end; justify-content: center; gap: 2px; width: 150px; height: 72px; transform: translate(-50%, -50%); filter: drop-shadow(0 0 14px rgba(219, 108, 56, .65)); }
+.alchemy-flame i { width: 36px; height: 62px; transform: skew(-7deg) rotate(8deg); border-radius: 70% 30% 60% 40%; background: linear-gradient(0deg, #d76c3d, #f2bd62 58%, #70d5b2); animation: furnace-flame 1.2s ease-in-out infinite alternate; }
+.alchemy-flame i:nth-child(2) { height: 76px; animation-delay: -.45s; }.alchemy-flame i:nth-child(3) { height: 50px; animation-delay: -.8s; }
+.alchemy-embers { position: absolute; z-index: 3; left: 50%; top: 77%; width: 170px; height: 30px; transform: translateX(-50%); }
+.alchemy-embers i { position: absolute; left: var(--ember-x); bottom: 0; width: 3px; height: 3px; background: #efb166; box-shadow: 0 0 6px #dd7141; animation: ember-rise 1.8s linear infinite; }.alchemy-embers i:nth-child(1){--ember-x:18%;}.alchemy-embers i:nth-child(2){--ember-x:42%;animation-delay:-.7s}.alchemy-embers i:nth-child(3){--ember-x:64%;animation-delay:-1.1s}.alchemy-embers i:nth-child(4){--ember-x:82%;animation-delay:-.3s}
+.alchemy-upload { position: relative; z-index: 3; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 14px; padding: 34px; color: #eff8f4; }
+.alchemy-state-label { color: #d7aa82; font: 600 11px/1.4 Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.alchemy-dropzone { display: grid; place-items: center; min-height: 190px; padding: 24px; border: 1px dashed rgba(200, 224, 213, .42); background: rgba(8, 31, 26, .24); cursor: pointer; text-align: center; }
+.alchemy-dropzone:hover, .alchemy-dropzone.is-dragging { border-color: #80d0b3; background: rgba(48, 116, 91, .28); box-shadow: inset 0 0 26px rgba(93, 201, 160, .1); }
+.alchemy-dropzone .guild-icon { color: #7ed2b3; }
+.alchemy-dropzone strong { margin-top: 10px; font-size: 19px; }
+.alchemy-dropzone span { max-width: 520px; color: #b8cdc5; }
+.alchemy-dropzone em { margin-top: 12px; color: #d7aa82; font-style: normal; font-size: 11px; }
+.alchemy-upload .btn { align-self: flex-start; min-width: 160px; }
+.panel-kicker { color: var(--kf-alchemy-copper); font: 600 10px/1.4 Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.process-panel .panel-head { align-items: end; }
+.job-queue-fragment { display: grid; gap: 12px; }
+.alchemy-workbench[data-forge-state="idle"] .alchemy-flame { opacity: .3; filter: none; }
+.alchemy-workbench[data-forge-state="waiting"] .alchemy-flame { opacity: .68; }
+.alchemy-workbench[data-forge-state="drag"] .alchemy-flame, .alchemy-workbench[data-forge-state="processing"] .alchemy-flame { transform: translate(-50%, -50%) scale(1.14); }
+.alchemy-workbench[data-forge-state="drag"] .vessel-brew, .alchemy-workbench[data-forge-state="processing"] .vessel-brew { background: linear-gradient(90deg, #4db38c, #83d1aa, #bd724f, #4db38c); background-size: 260% 100%; animation: brew-flow 3.4s linear infinite; }
+.alchemy-workbench[data-forge-state="paused"] .alchemy-flame { opacity: .18; transform: translate(-50%, -50%) scaleY(.45); }
+.alchemy-workbench[data-forge-state="paused"] .vessel-brew { background: #4d6d62; box-shadow: none; }
+.alchemy-workbench[data-forge-state="needs_attention"] .alchemy-flame, .alchemy-workbench[data-forge-state="needs_attention"] .alchemy-embers { opacity: 0; }
+.alchemy-workbench[data-forge-state="needs_attention"] .vessel-brew { background: #76504a; box-shadow: 0 0 0 2px rgba(214, 113, 91, .2); }
+.alchemy-workbench[data-forge-state="completed"] .vessel-brew { background: #7ddbd1; box-shadow: 0 0 24px rgba(125, 219, 209, .7); }
+.alchemy-workbench[data-forge-state="completed"] .alchemy-flame { opacity: .2; filter: hue-rotate(90deg); }
+@keyframes furnace-flame { to { height: 44px; transform: skew(7deg) rotate(-6deg); } }
+@keyframes ember-rise { to { transform: translateY(-34px); opacity: 0; } }
+@keyframes brew-bubble { 0% { transform: translateY(10px) scale(.5); opacity: 0; } 70% { opacity: 1; } 100% { transform: translateY(-15px); opacity: 0; } }
+@keyframes brew-flow { to { background-position: -260% 0; } }
+
 .job-summary { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
 .job-summary span { border-color: var(--kf-line); border-radius: var(--kf-radius); background: var(--kf-surface-subtle); }
 .job-item { border-color: var(--kf-line); border-radius: var(--kf-radius); padding: 13px; }
@@ -311,6 +359,7 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
   .forge-flow { grid-template-columns: 160px minmax(0, 1fr); gap: 12px; }
   .forge-step { padding-inline: 11px; }
   .constellation-panel { grid-template-columns: 200px minmax(0, 1fr); }
+  .alchemy-workbench { grid-template-columns: minmax(260px, .75fr) minmax(360px, 1.25fr); }
 }
 
 @media (max-width: 760px) {
@@ -359,6 +408,11 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
   .constellation-root[data-root-index="3"] { --root-x: 79%; --root-y: 75%; }
   .constellation-root[data-root-index="4"] { --root-x: 49%; --root-y: 84%; }
   .constellation-root[data-root-index="5"] { --root-x: 18%; --root-y: 72%; }
+  .alchemy-workbench { grid-template-columns: 1fr; }
+  .alchemy-visual { min-height: 290px; border-right: 0; border-bottom: 1px solid rgba(206,226,215,.14); }
+  .alchemy-upload { padding: 20px; }
+  .alchemy-dropzone { min-height: 160px; }
+  .alchemy-upload .btn { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
