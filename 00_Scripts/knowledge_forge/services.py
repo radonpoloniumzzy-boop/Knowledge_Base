@@ -10,6 +10,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+import bleach
+import markdown
+from markupsafe import Markup
+
 from .db import DATA_DIR, ROOT_DIR, connect, init_db
 
 
@@ -998,6 +1002,61 @@ def file_detail(file_id: int) -> dict[str, Any] | None:
             text = path.read_text(encoding="utf-8", errors="ignore")[:3000]
         previews.append({"artifact": artifact, "preview": text})
     return {"file": file, "tags": tags, "artifacts": previews, "chunks": chunks}
+
+
+SAFE_MARKDOWN_TAGS = {
+    "a", "blockquote", "br", "code", "del", "em", "h1", "h2", "h3", "h4",
+    "h5", "h6", "hr", "li", "ol", "p", "pre", "strong", "table", "tbody",
+    "td", "th", "thead", "tr", "ul",
+}
+
+
+def render_markdown_document(text: str) -> dict[str, Markup]:
+    renderer = markdown.Markdown(extensions=["toc", "tables", "fenced_code"], output_format="html")
+    raw_html = renderer.convert(text)
+    clean_html = bleach.clean(
+        raw_html,
+        tags=SAFE_MARKDOWN_TAGS,
+        attributes={"a": ["href", "title"], "h1": ["id"], "h2": ["id"], "h3": ["id"], "h4": ["id"], "h5": ["id"], "h6": ["id"]},
+        protocols={"http", "https", "mailto"},
+        strip=True,
+    )
+    clean_toc = bleach.clean(
+        renderer.toc, tags={"div", "ul", "li", "a"},
+        attributes={"div": ["class"], "a": ["href"]}, protocols=set(), strip=True,
+    )
+    return {"html": Markup(clean_html), "toc": Markup(clean_toc)}
+
+
+def document_reader(file_id: int, view: str = "standard") -> dict[str, Any] | None:
+    detail = file_detail(file_id)
+    if detail is None:
+        return None
+    allowed = {"standard", "structure", "sop", "insight", "chunks"}
+    view = view if view in allowed else "standard"
+    text = ""
+    available = ["standard"]
+    if view == "standard":
+        path = Path(detail["file"]["source_path"])
+        if path.exists() and path.suffix.lower() in {".md", ".txt"}:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+    elif view == "chunks":
+        with connect() as conn:
+            chunks = conn.execute(
+                "SELECT * FROM chunks WHERE file_id=? ORDER BY chunk_index", (file_id,)
+            ).fetchall()
+        text = "\n\n".join(f"## 知识块 {row['chunk_index']}\n\n{row['text']}" for row in chunks)
+    else:
+        artifact = next((item for item in detail["artifacts"] if item["artifact"]["artifact_type"] == view), None)
+        if artifact:
+            path = Path(artifact["artifact"]["path"])
+            if path.exists():
+                text = path.read_text(encoding="utf-8", errors="ignore")
+    artifact_types = {item["artifact"]["artifact_type"] for item in detail["artifacts"]}
+    available.extend(kind for kind in ("structure", "sop", "insight") if kind in artifact_types)
+    available.append("chunks")
+    rendered = render_markdown_document(text or "_当前内容尚未生成。_")
+    return {"view": view, "available_views": available, "text": text, **rendered}
 
 
 def update_file_metadata(

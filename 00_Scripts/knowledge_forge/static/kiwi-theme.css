@@ -259,6 +259,12 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
 .archive-catalog { grid-template-columns:minmax(0,1fr) 310px; }.catalog-panel { overflow:hidden; }.archive-filters { grid-template-columns:1.2fr repeat(6,minmax(110px,.7fr)) auto; overflow-x:auto; padding-bottom:3px; }.archive-table td:first-child { min-width:230px; }.catalog-pagination { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:14px; }.catalog-pagination [aria-disabled="true"] { opacity:.4; pointer-events:none; }.catalog-pagination span { color:var(--kf-ink-soft); }
 .archive-drawer { border-top:3px solid #8b3f4d; }
 
+/* Detail: quiet reading desk first, state-changing tools behind manage mode. */
+.reading-head .eyebrow { color:#8b3f4d; }.mode-switch { display:flex; padding:3px; border:1px solid var(--kf-line-strong); background:#fff; }.mode-switch a { min-width:72px; padding:8px 12px; text-align:center; }.mode-switch a.active { background:#29473d; color:#fff; }
+.reading-tabs { display:flex; gap:6px; overflow-x:auto; margin-bottom:10px; padding-bottom:4px; }.reading-tabs a { flex:0 0 auto; min-height:40px; padding:9px 14px; border:1px solid var(--kf-line); background:#fff; color:var(--kf-ink-soft); }.reading-tabs a.active { border-color:#8b3f4d; background:#f7edef; color:#7d3442; }
+.reading-desk { display:grid; grid-template-columns:230px minmax(0,1fr); min-height:650px; overflow:hidden; border:1px solid #cfc8bb; border-radius:var(--kf-radius); background:#fff; box-shadow:0 16px 34px rgba(63,55,47,.1); }.reading-toc { padding:22px 18px; border-right:1px solid #ded8cc; background:linear-gradient(180deg,#f5f2ea,#f8f7f2); }.reading-toc h2 { margin:4px 0 14px; }.reading-toc ul { padding-left:16px; }.reading-toc li { margin:6px 0; }.reading-toc a { color:#53665e; font-size:12px; }.markdown-document { min-width:0; max-width:920px; padding:38px 54px 70px; color:#252b29; font:16px/1.85 Georgia,"Microsoft YaHei",serif; }.markdown-document h1,.markdown-document h2,.markdown-document h3 { scroll-margin-top:82px; margin:1.6em 0 .6em; color:#203a32; font-family:"Segoe UI","Microsoft YaHei",sans-serif; letter-spacing:0; }.markdown-document h1 { margin-top:0; font-size:30px; }.markdown-document h2 { padding-bottom:7px; border-bottom:1px solid #d9d2c5; font-size:23px; }.markdown-document h3 { font-size:19px; }.markdown-document pre { overflow:auto; padding:14px; background:#202a27; color:#e9efe9; }.markdown-document code { font-family:Consolas,monospace; }.markdown-document table { width:100%; border-collapse:collapse; }.markdown-document th,.markdown-document td { padding:8px; border:1px solid #d8d2c7; }.markdown-document blockquote { margin-left:0; padding:8px 16px; border-left:3px solid #8b3f4d; background:#faf5f5; }
+.management-banner { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:14px; padding:16px 18px; border:1px solid #4d6259; background:linear-gradient(110deg,#eef4f0,#f7edef); }
+
 .filter-bar, .rich-filter-bar { gap: 7px; }
 .library-grid .rich-filter-bar { grid-template-columns: minmax(140px, 1.2fr) minmax(125px, .8fr) minmax(145px, 1fr) 108px 108px 72px; }
 .filter-bar input, .filter-bar select, .metadata-editor input, .metadata-editor select, .pack-description, .pack-tags, .new-pack-form textarea, .new-pack-form input, .pack-editor input[type="number"], .tag-create input, .tag-edit input, .setting-form input, .prompt-editor textarea {
@@ -438,6 +444,7 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
   .inventory-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .identity-fields { grid-template-columns: 1fr; }
   .archive-catalog { grid-template-columns:1fr; }.archive-drawer { position:static; }.archive-filters { grid-template-columns:repeat(4,minmax(150px,1fr)); }
+  .reading-desk { grid-template-columns:190px minmax(0,1fr); }.markdown-document { padding-inline:36px; }
 }
 
 @media (max-width: 760px) {
@@ -509,6 +516,7 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
   .pack-delivery .btn { width: 100%; }
   .archive-shelves { margin-inline:-4px; padding-inline:10px; }.archive-shelf { flex-basis:108px; min-height:82px; }.all-shelves { flex-basis:110px; }.all-shelves summary { min-height:82px; }.all-shelves[open] div { left:14px; right:14px; grid-template-columns:1fr 1fr; }
   .archive-filters { grid-template-columns:1fr; overflow:visible; }.archive-table,.archive-table tbody,.archive-table tr,.archive-table td { display:block; min-width:0; }.archive-table thead { display:none; }.archive-table tr { margin-bottom:9px; padding:12px; border:1px solid var(--kf-line); background:#fff; }.archive-table td { width:auto!important; padding:4px 0; border:0; }.archive-table td:last-child { display:flex; gap:8px; }.catalog-pagination { flex-wrap:wrap; }.catalog-pagination span { order:-1; width:100%; text-align:center; }
+  .reading-desk { grid-template-columns:1fr; }.reading-toc { border-right:0; border-bottom:1px solid #ded8cc; }.reading-toc .toc > ul { columns:2; }.markdown-document { padding:26px 20px 54px; font-size:16px; }.management-banner { align-items:flex-start; flex-direction:column; }
 }
 
 @media (prefers-reduced-motion: reduce) {

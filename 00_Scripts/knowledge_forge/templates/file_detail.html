@@ -1,186 +1,27 @@
 {% extends "base.html" %}
 {% block title %}{{ file.title }} - 知识炼制台{% endblock %}
 {% block content %}
-<section class="page-head">
-  <div>
-    <p class="eyebrow">File Detail</p>
-    <h1>{{ file.title }}</h1>
-    <p>{{ file.source_path }}</p>
-  </div>
-  <div class="head-actions">
-    <form action="/files/{{ file.id }}/regenerate" method="post">
-      <button class="btn primary" type="submit">重新生成全部产物</button>
-    </form>
-    {% if source_id %}
-    <form action="/files/{{ file.id }}/recycle" method="post">
-      <button class="btn danger" type="submit">整份资料移入回收站</button>
-    </form>
-    {% endif %}
-    <a class="btn secondary" href="/library">返回知识库</a>
-  </div>
-</section>
+<section class="page-head reading-head"><div><p class="eyebrow">Scholar desk</p><h1>{{ file.title }}</h1><p>{{ file.source_path }}</p></div><div class="head-actions"><div class="mode-switch" role="group" aria-label="详情模式"><a class="{{ 'active' if mode=='read' else '' }}" href="/files/{{ file.id }}?mode=read">阅读</a><a class="{{ 'active' if mode=='manage' else '' }}" href="/files/{{ file.id }}?mode=manage">管理</a></div><a class="btn secondary" href="/library">返回知识库</a></div></section>
 
-{% if enhancement_jobs %}
-<section class="panel enhancement-panel">
-  <div class="panel-head">
-    <h2>知识增强</h2>
-    <span>资料已可用，各项增强独立处理</span>
-  </div>
-  <div class="enhancement-grid">
-    {% for job in enhancement_jobs %}
-    <div class="enhancement-row">
-      <div>
-        <strong>
-          {% if job.kind == 'classification' %}自动分类
-          {% elif job.kind == 'structure' %}Structure
-          {% elif job.kind == 'sop' %}SOP
-          {% else %}Insight{% endif %}
-        </strong>
-        {% if job.message %}<span>{{ job.message }}</span>{% endif %}
-        {% if job.prompt_version %}<span>提示词 {{ job.prompt_version }}</span>{% endif %}
-      </div>
-      <div class="version-state">
-        <span class="badge {{ job.status }}">
-          {% if job.status == 'waiting' %}等待
-          {% elif job.status == 'processing' %}处理中
-          {% elif job.status == 'completed' %}已完成
-          {% elif job.status == 'not_applicable' %}不适用
-          {% else %}需要处理{% endif %}
-        </span>
-        <form action="/files/{{ file.id }}/enhancements/{{ job.kind }}/regenerate" method="post">
-          <button class="btn tiny" type="submit">重新生成</button>
-        </form>
-      </div>
-    </div>
-    {% endfor %}
-  </div>
+{% if mode == 'read' %}
+<nav class="reading-tabs" aria-label="阅读内容">
+  {% set labels={'standard':'标准正文','structure':'Structure','sop':'SOP','insight':'Insight','chunks':'知识块'} %}
+  {% for item in reader.available_views %}<a class="{{ 'active' if reader.view==item else '' }}" href="/files/{{ file.id }}?mode=read&view={{ item }}">{{ labels[item] }}</a>{% endfor %}
+</nav>
+<section class="reading-desk">
+  <aside class="reading-toc"><p class="panel-kicker">Contents</p><h2>目录</h2>{{ reader.toc }}{% if not reader.toc %}<span>当前内容没有标题目录。</span>{% endif %}</aside>
+  <article class="markdown-document">{{ reader.html }}</article>
 </section>
-{% endif %}
+{% else %}
+<section class="management-banner"><div><p class="panel-kicker">Archive management</p><h2>资料治理与版本状态</h2></div><div class="head-actions"><form action="/files/{{ file.id }}/regenerate" method="post"><button class="btn primary" type="submit">重新生成全部产物</button></form>{% if source_id %}<form action="/files/{{ file.id }}/recycle" method="post" onsubmit="return confirm('确定将整份知识资料移入回收站吗？');"><button class="btn danger" type="submit">移入回收站</button></form>{% endif %}</div></section>
 
-{% if version_history %}
-<section class="panel version-panel">
-  <div class="panel-head">
-    <h2>版本历史</h2>
-    <span>删除旧版本是独立操作；这里的回收操作会处理整份知识资料</span>
-  </div>
-  <div class="version-list">
-    {% for version in version_history %}
-    <div class="version-row {% if version.is_current %}current{% endif %}">
-      <div>
-        <strong>版本 {{ version.version_number or loop.revindex }}</strong>
-        <span>{{ version.original_filename or '历史资料' }}</span>
-        {% if version.extraction_metadata %}
-        <span>
-          格式 {{ (version.extraction_metadata.source_format or '-')|upper }}
-          · 提取 {{ version.extraction_metadata.character_count or 0 }} 字符
-        </span>
-        {% endif %}
-      </div>
-      <div class="version-state">
-        {% if version.is_current %}<span class="badge completed">当前版本</span>
-        {% elif version.status == 'available' %}<span class="badge">历史版本</span>
-        {% elif version.task_status == 'needs_attention' %}<span class="badge needs_attention">需要处理</span>
-        {% else %}<span class="badge processing">处理中</span>{% endif %}
-        {% if version.standard_file_id %}
-        <a class="btn tiny" href="/files/{{ version.standard_file_id }}">查看</a>
-        {% endif %}
-      </div>
-      {% if version.quality_warnings %}
-      <div class="version-warnings">
-        {% for warning in version.quality_warnings %}<span>{{ warning }}</span>{% endfor %}
-      </div>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
+{% if enhancement_jobs %}<section class="panel"><div class="panel-head"><h2>知识增强</h2><span>各项增强独立处理</span></div><div class="enhancement-grid">{% for job in enhancement_jobs %}<div class="enhancement-row"><div><strong>{% if job.kind=='classification' %}自动分类{% elif job.kind=='structure' %}Structure{% elif job.kind=='sop' %}SOP{% else %}Insight{% endif %}</strong>{% if job.message %}<span>{{ job.message }}</span>{% endif %}</div><div class="version-state"><span class="badge {{ job.status }}">{{ job.status }}</span><form action="/files/{{ file.id }}/enhancements/{{ job.kind }}/regenerate" method="post"><button class="btn tiny" type="submit">重新生成</button></form></div></div>{% endfor %}</div></section>{% endif %}
 
 <section class="layout-two wide-right">
-  <div class="panel">
-    <div class="panel-head">
-      <h2>标签治理</h2>
-      <span>人工反馈优先于自动标签</span>
-    </div>
-    <div class="tag-list">
-      {% for tag in tags %}
-      <div class="tag-row">
-        <div>
-          <strong>{{ tag.name }}</strong>
-          <span>{{ tag.scope }} · {{ "%.2f"|format(tag.confidence) }} · {{ tag.status }}</span>
-        </div>
-        <form action="/files/{{ file.id }}/tags" method="post">
-          <input type="hidden" name="tag" value="{{ tag.name }}">
-          <button name="action" value="demote" class="btn tiny" type="submit">降级片段</button>
-          <button name="action" value="reject" class="btn tiny danger" type="submit">拒绝</button>
-        </form>
-      </div>
-      {% else %}
-      <div class="empty">暂无标签。</div>
-      {% endfor %}
-    </div>
-    <form class="inline-form" action="/files/{{ file.id }}/tags" method="post">
-      <input name="tag" placeholder="新增标签，例如 艺术/色彩">
-      <button class="btn primary" name="action" value="add" type="submit">添加标签</button>
-    </form>
-  </div>
-
-  <div class="panel">
-    <div class="panel-head">
-      <h2>资料信息</h2>
-      <span>{{ file.library_type }}</span>
-    </div>
-    <form class="metadata-editor" action="/files/{{ file.id }}/metadata" method="post">
-      <label>标题<input name="title" value="{{ file.title }}" required></label>
-      <label>主分类
-        <select name="main_category">
-          <option value="">未分类</option>
-          {% for category in categories %}
-          <option value="{{ category.name }}" {% if category.name == file.main_category %}selected{% endif %}>{{ category.label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>子分类<input name="sub_category" value="{{ file.sub_category or '' }}" placeholder="可留空"></label>
-      <button class="btn primary" type="submit">保存资料信息</button>
-    </form>
-    <dl class="meta-list metadata-summary">
-      <dt>所在地址</dt><dd class="path">{{ file.source_path }}</dd>
-      <dt>大小</dt><dd>{{ (file.size_bytes / 1024)|round(1) }} KB</dd>
-      <dt>状态</dt><dd>{{ file.status }}</dd>
-    </dl>
-  </div>
+  <div class="panel"><div class="panel-head"><h2>标签治理</h2><span>人工反馈优先</span></div><div class="tag-list">{% for tag in tags %}<div class="tag-row"><div><strong>{{ tag.name }}</strong><span>{{ tag.scope }} · {{ '%.2f'|format(tag.confidence) }} · {{ tag.status }}</span></div><form action="/files/{{ file.id }}/tags" method="post"><input type="hidden" name="tag" value="{{ tag.name }}"><button name="action" value="demote" class="btn tiny" type="submit">降级片段</button><button name="action" value="reject" class="btn tiny danger" type="submit">拒绝</button></form></div>{% else %}<div class="empty">暂无标签。</div>{% endfor %}</div><form class="inline-form" action="/files/{{ file.id }}/tags" method="post"><input name="tag" placeholder="新增标签，例如 艺术/色彩"><button class="btn primary" name="action" value="add" type="submit">添加标签</button></form></div>
+  <div class="panel"><div class="panel-head"><h2>资料信息</h2><span>{{ file.library_type }}</span></div><form class="metadata-editor" action="/files/{{ file.id }}/metadata" method="post"><label>标题<input name="title" value="{{ file.title }}" required></label><label>主分类<select name="main_category"><option value="">未分类</option>{% for category in categories %}<option value="{{ category.name }}" {% if category.name==file.main_category %}selected{% endif %}>{{ category.label }}</option>{% endfor %}</select></label><label>子分类<input name="sub_category" value="{{ file.sub_category or '' }}"></label><button class="btn primary" type="submit">保存资料信息</button></form><dl class="meta-list metadata-summary"><dt>所在地址</dt><dd class="path">{{ file.source_path }}</dd><dt>大小</dt><dd>{{ (file.size_bytes/1024)|round(1) }} KB</dd><dt>状态</dt><dd>{{ file.status }}</dd></dl></div>
 </section>
 
-<section class="panel">
-  <div class="panel-head">
-    <h2>产物预览</h2>
-    <span>清洗文本、SOP、Insight 等</span>
-  </div>
-  <div class="artifact-grid">
-    {% for item in artifacts %}
-    <article class="artifact">
-      <h3>{{ item.artifact.artifact_type }}</h3>
-      <p>{{ item.artifact.title }}</p>
-      <pre>{{ item.preview or '此产物不可直接预览。' }}</pre>
-    </article>
-    {% else %}
-    <div class="empty">没有关联产物。</div>
-    {% endfor %}
-  </div>
-</section>
-
-<section class="panel">
-  <div class="panel-head">
-    <h2>知识块</h2>
-    <span>v1 导出 JSONL 使用这些片段</span>
-  </div>
-  {% for chunk in chunks %}
-  <div class="chunk">
-    <strong>#{{ chunk.chunk_index }}</strong>
-    <p>{{ chunk.text[:420] }}{% if chunk.text|length > 420 %}...{% endif %}</p>
-  </div>
-  {% else %}
-  <div class="empty">暂无知识块。</div>
-  {% endfor %}
-</section>
+{% if version_history %}<section class="panel"><div class="panel-head"><h2>版本历史</h2><span>当前版本与提取质量</span></div><div class="version-list">{% for version in version_history %}<div class="version-row {{ 'current' if version.is_current else '' }}"><div><strong>版本 {{ version.version_number or loop.revindex }}</strong><span>{{ version.original_filename or '历史资料' }}</span>{% if version.extraction_metadata %}<span>格式 {{ (version.extraction_metadata.source_format or '-')|upper }} · {{ version.extraction_metadata.character_count or 0 }} 字符</span>{% endif %}</div><div class="version-state">{% if version.is_current %}<span class="badge completed">当前版本</span>{% else %}<span class="badge">历史版本</span>{% endif %}{% if version.standard_file_id %}<a class="btn tiny" href="/files/{{ version.standard_file_id }}">查看</a>{% endif %}</div>{% if version.quality_warnings %}<div class="version-warnings">{% for warning in version.quality_warnings %}<span>{{ warning }}</span>{% endfor %}</div>{% endif %}</div>{% endfor %}</div></section>{% endif %}
+{% endif %}
 {% endblock %}

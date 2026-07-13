@@ -203,7 +203,7 @@ def library(
 
 
 @app.get("/files/{file_id}", response_class=HTMLResponse)
-def detail(request: Request, file_id: int):
+def detail(request: Request, file_id: int, mode: str = "read", view: str = "standard"):
     data = services.file_detail(file_id)
     if not data:
         raise HTTPException(status_code=404, detail="File not found")
@@ -216,6 +216,8 @@ def detail(request: Request, file_id: int):
     )
     data["source_id"] = recycle_bin.source_id_for_file(file_id)
     data["categories"] = services.list_category_options()
+    data["mode"] = mode if mode in {"read", "manage"} else "read"
+    data["reader"] = services.document_reader(file_id, view)
     return templates.TemplateResponse(request, "file_detail.html", ctx(request, "library", **data))
 
 
@@ -232,7 +234,7 @@ def update_file_metadata(
         raise HTTPException(status_code=404, detail="知识资料不存在")
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    return RedirectResponse(f"/files/{file_id}", status_code=303)
+    return RedirectResponse(f"/files/{file_id}?mode=manage", status_code=303)
 
 
 @app.post("/files/{file_id}/recycle")
@@ -274,7 +276,7 @@ def restore_source(source_id: int):
 @app.post("/files/{file_id}/tags")
 def update_tag(file_id: int, tag: str = Form(...), action: str = Form("add")):
     services.update_file_tag(file_id, tag, action)
-    return RedirectResponse(f"/files/{file_id}", status_code=303)
+    return RedirectResponse(f"/files/{file_id}?mode=manage", status_code=303)
 
 
 @app.post("/files/{file_id}/regenerate")
@@ -285,7 +287,7 @@ def regenerate_file(file_id: int):
         raise HTTPException(status_code=404, detail="Current version not found")
     for kind in ("structure", "sop", "insight"):
         enhancement_queue.regenerate(current["id"], kind)
-    return RedirectResponse(f"/files/{file_id}", status_code=303)
+    return RedirectResponse(f"/files/{file_id}?mode=manage", status_code=303)
 
 
 @app.post("/files/{file_id}/enhancements/{kind}/regenerate")
@@ -298,7 +300,7 @@ def regenerate_enhancement(file_id: int, kind: str):
         enhancement_queue.regenerate(current["id"], kind)
     except (KeyError, ValueError):
         raise HTTPException(status_code=404, detail="Enhancement not found")
-    return RedirectResponse(f"/files/{file_id}", status_code=303)
+    return RedirectResponse(f"/files/{file_id}?mode=manage", status_code=303)
 
 
 @app.get("/packs", response_class=HTMLResponse)

@@ -181,7 +181,7 @@ def test_file_detail_displays_nonblocking_quality_warning(monkeypatch):
     )
     client = TestClient(app_module.app)
 
-    response = client.get("/files/7")
+    response = client.get("/files/7?mode=manage")
 
     assert response.status_code == 200
     assert "内容较短，请确认提取结果是否完整。" in response.text
@@ -241,7 +241,7 @@ def test_file_metadata_can_be_edited_from_detail_page(monkeypatch):
     )
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/files/7"
+    assert response.headers["location"] == "/files/7?mode=manage"
     assert changes == [(7, "透视基础", "08_Art", "透视结构")]
 
 
