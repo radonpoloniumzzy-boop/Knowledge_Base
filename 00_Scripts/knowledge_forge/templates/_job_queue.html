@@ -1,6 +1,7 @@
 <div class="job-summary">
   <span><strong>{{ job_summary.waiting }}</strong> 排队</span>
   <span><strong>{{ job_summary.processing }}</strong> 处理中</span>
+  <span><strong>{{ job_summary.paused }}</strong> 已暂停</span>
   <span><strong>{{ job_summary.completed }}</strong> 已完成</span>
   <span><strong>{{ job_summary.needs_attention }}</strong> 需要处理</span>
 </div>
@@ -27,6 +28,7 @@
       <span class="badge {{ job.status }}">
         {% if job.status == 'waiting' %}排队中
         {% elif job.status == 'processing' %}处理中
+        {% elif job.status == 'paused' %}已暂停
         {% elif job.status == 'completed' %}已完成
         {% elif job.status == 'needs_attention' %}需要处理
         {% else %}{{ job.status }}{% endif %}
@@ -37,9 +39,28 @@
     </div>
     <div class="job-meta">
       <span>{{ job.progress }}%</span>
+      {% if job.next_attempt_display %}<span>下次重试 {{ job.next_attempt_display }}</span>{% endif %}
+      {% if job.retry_count %}<span>已重试 {{ job.retry_count }}/3</span>{% endif %}
       <time>{{ job.updated_at }}</time>
     </div>
-    {% if job.error %}<p class="job-error">{{ job.error }}</p>{% endif %}
+    {% if job.user_message %}
+    <p class="job-error">
+      {% if job.failed_stage_display %}阶段：{{ job.failed_stage_display }}。{% endif %}{{ job.user_message }}
+    </p>
+    {% endif %}
+    <div class="job-actions">
+      {% if job.status in ['waiting', 'processing'] %}
+      <form action="/ingest/tasks/{{ job.id }}/pause" method="post">
+        <button class="btn secondary" type="submit" {% if job.pause_requested %}disabled{% endif %}>
+          {% if job.pause_requested %}等待阶段完成{% else %}暂停{% endif %}
+        </button>
+      </form>
+      {% elif job.status in ['paused', 'needs_attention'] %}
+      <form action="/ingest/tasks/{{ job.id }}/resume" method="post">
+        <button class="btn secondary" type="submit">继续</button>
+      </form>
+      {% endif %}
+    </div>
   </article>
   {% else %}
   <div class="empty">暂无导入任务。</div>

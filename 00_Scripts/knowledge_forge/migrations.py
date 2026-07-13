@@ -248,10 +248,27 @@ def _add_atomic_core_processing(conn: sqlite3.Connection) -> None:
     )
 
 
+def _add_retry_pause_and_errors(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        ALTER TABLE import_tasks ADD COLUMN failure_type TEXT;
+        ALTER TABLE import_tasks ADD COLUMN failed_stage TEXT;
+        ALTER TABLE import_tasks ADD COLUMN user_message TEXT;
+        ALTER TABLE import_tasks ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE import_tasks ADD COLUMN next_attempt_at REAL;
+        ALTER TABLE import_tasks ADD COLUMN pause_requested INTEGER NOT NULL DEFAULT 0;
+
+        CREATE INDEX idx_import_tasks_ready
+            ON import_tasks(status, pause_requested, next_attempt_at, id);
+        """
+    )
+
+
 DEFAULT_MIGRATIONS = (
     Migration(1, "initial-schema", _apply_initial_schema),
     Migration(2, "persistent-text-import-queue", _add_persistent_import_queue),
     Migration(3, "atomic-text-core-processing", _add_atomic_core_processing),
+    Migration(4, "retry-pause-and-actionable-errors", _add_retry_pause_and_errors),
 )
 
 

@@ -159,3 +159,30 @@ def test_failed_promotion_preserves_existing_current_version(tmp_path):
             "SELECT current_version_id FROM knowledge_sources WHERE id=?", (source_id,)
         ).fetchone()[0]
     assert current == old_version
+
+
+def test_active_task_pauses_after_current_atomic_stage_and_resumes(tmp_path):
+    state = {"paused_once": False}
+    queue = None
+
+    def request_pause(stage, moment):
+        if stage == "extract_text" and moment == "before_commit" and not state["paused_once"]:
+            state["paused_once"] = True
+            queue.pause(task.id)
+
+    database_path, _, _, queue = make_system(tmp_path, request_pause)
+    task = queue.submit("boundary.txt", b"Pause only after committed extraction.")
+    assert queue.acquire_worker() is True
+
+    queue.process_next()
+    paused = queue.get_task(task.id)
+    assert paused.status == "paused"
+    assert completed_stages(database_path, task.id) == ["extract_text"]
+    with connect(database_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0] == 0
+
+    queue.resume(task.id)
+    queue.process_next()
+    assert queue.get_task(task.id).status == "completed"
+    assert completed_stages(database_path, task.id) == list(CORE_STAGES)
+    queue.release_worker()

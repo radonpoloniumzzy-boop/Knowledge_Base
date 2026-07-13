@@ -160,7 +160,7 @@ button, input { font: inherit; }
 
 .domain-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
 }
 .domain-card, .pack-mini {
@@ -341,7 +341,8 @@ button, input { font: inherit; }
   padding: 14px;
   background: white;
 }
-.job-item.failed { border-color: #e7a7a7; }
+.job-item.needs_attention { border-color: #e7a7a7; }
+.job-item.paused { border-color: #d8c58e; background: #fffdf6; }
 .job-main,
 .job-meta {
   display: flex;
@@ -366,7 +367,8 @@ button, input { font: inherit; }
   transition: width .25s ease;
 }
 .job-item.completed .job-progress span { background: #269768; }
-.job-item.failed .job-progress span { background: var(--red); }
+.job-item.needs_attention .job-progress span { background: var(--red); }
+.job-item.paused .job-progress span { background: #c58b20; }
 .job-meta { color: var(--muted); font-size: 12px; }
 .job-error {
   margin: 10px 0 0;
@@ -376,6 +378,12 @@ button, input { font: inherit; }
   color: #9f2f2f;
   word-break: break-word;
 }
+.job-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+.job-actions .btn { min-height: 34px; padding: 6px 12px; }
 
 .tag-list { display: grid; gap: 10px; margin-bottom: 14px; }
 .tag-row {

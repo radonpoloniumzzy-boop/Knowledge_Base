@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -46,11 +47,25 @@ def import_job_view(task):
         "chunk_indexing": 75,
         "promote_version": 90,
     }
+    stage_labels = {
+        "processing": "准备处理",
+        "extract_text": "提取文本",
+        "standard_document": "生成标准知识文档",
+        "quality_validation": "检查文档完整性",
+        "chunk_indexing": "生成检索分块",
+        "promote_version": "切换当前版本",
+    }
     return {
         **task.__dict__,
         "file_name": task.filename,
         "step": task.current_stage,
         "progress": stage_progress.get(task.current_stage, progress),
+        "failed_stage_display": stage_labels.get(task.failed_stage, task.failed_stage),
+        "next_attempt_display": (
+            datetime.fromtimestamp(task.next_attempt_at).strftime("%H:%M:%S")
+            if task.next_attempt_at is not None
+            else None
+        ),
     }
 
 
@@ -109,6 +124,24 @@ async def upload(files: list[UploadFile] = File(...)):
         data = await uploaded.read()
         uploads.append((uploaded.filename or "upload.txt", data))
     ingestion_queue.submit_many(uploads)
+    return RedirectResponse("/ingest", status_code=303)
+
+
+@app.post("/ingest/tasks/{task_id}/pause")
+def pause_import(task_id: int):
+    try:
+        ingestion_queue.pause(task_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Import task not found")
+    return RedirectResponse("/ingest", status_code=303)
+
+
+@app.post("/ingest/tasks/{task_id}/resume")
+def resume_import(task_id: int):
+    try:
+        ingestion_queue.resume(task_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Import task not found")
     return RedirectResponse("/ingest", status_code=303)
 
 

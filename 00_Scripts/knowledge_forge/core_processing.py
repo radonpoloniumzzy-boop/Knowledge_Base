@@ -7,7 +7,11 @@ from typing import Callable
 from uuid import uuid4
 
 from .db import connect
-from .ingestion import ImportTask
+from .ingestion import (
+    DeterministicImportError,
+    ImportTask,
+    TaskPaused,
+)
 from .services import chunk_text, clean_text, estimate_tokens
 
 
@@ -46,6 +50,12 @@ class CoreTextProcessor:
                     (stage, task.id),
                 )
             getattr(self, f"_{stage}")(task.id, task.file_id, version_id)
+            with connect(self.database_path) as conn:
+                pause_requested = conn.execute(
+                    "SELECT pause_requested FROM import_tasks WHERE id=?", (task.id,)
+                ).fetchone()[0]
+            if pause_requested:
+                raise TaskPaused()
 
     def _ensure_version(self, task_id: int, file_id: int) -> int:
         with connect(self.database_path) as conn:
@@ -112,13 +122,20 @@ class CoreTextProcessor:
         with connect(self.database_path) as conn:
             row = conn.execute("SELECT source_path FROM files WHERE id=?", (file_id,)).fetchone()
         if row is None:
-            raise ValueError("Upload source is missing")
+            raise DeterministicImportError("extract_text", "找不到上传文件，请重新选择文件。")
         source = Path(row["source_path"])
         if source.suffix.lower() not in {".txt", ".md", ".markdown"}:
-            raise ValueError(f"Unsupported core text type: {source.suffix}")
-        text = clean_text(source.read_text(encoding="utf-8-sig"))
+            raise DeterministicImportError(
+                "extract_text", "当前仅支持 TXT、Markdown 和 MARKDOWN 文本文件。"
+            )
+        try:
+            text = clean_text(source.read_text(encoding="utf-8-sig"))
+        except UnicodeDecodeError as exc:
+            raise DeterministicImportError(
+                "extract_text", "文件编码无法读取，请转换为 UTF-8 后继续。"
+            ) from exc
         if not text:
-            raise ValueError("Extracted text is empty")
+            raise DeterministicImportError("extract_text", "文件没有可用文本内容，请更换文件。")
         self._commit_stage(task_id, "extract_text", text)
 
     def _standard_document(self, task_id: int, file_id: int, version_id: int) -> None:
@@ -155,17 +172,23 @@ class CoreTextProcessor:
     def _quality_validation(self, task_id: int, _file_id: int, _version_id: int) -> None:
         target = Path(self._payload(task_id, "standard_document"))
         if not target.is_file():
-            raise ValueError("Standard document is missing")
+            raise DeterministicImportError(
+                "quality_validation", "标准知识文档缺失，请继续任务以重新生成。"
+            )
         text = target.read_text(encoding="utf-8")
         if not text.strip():
-            raise ValueError("Standard document is empty")
+            raise DeterministicImportError(
+                "quality_validation", "标准知识文档为空，请检查源文件。"
+            )
         self._commit_stage(task_id, "quality_validation", json.dumps({"warnings": []}))
 
     def _chunk_indexing(self, task_id: int, _file_id: int, version_id: int) -> None:
         text = self._payload(task_id, "extract_text")
         chunks = chunk_text(text)
         if not chunks or any(not chunk.strip() for chunk in chunks):
-            raise ValueError("Chunk integrity validation failed")
+            raise DeterministicImportError(
+                "chunk_indexing", "无法生成完整检索分块，请检查文档内容。"
+            )
         self._stage_hook("chunk_indexing", "before_commit")
         with connect(self.database_path) as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -221,7 +244,9 @@ class CoreTextProcessor:
                 "SELECT COUNT(*) FROM chunks WHERE file_id=?", (standard_file_id,)
             ).fetchone()[0]
             if not expected or expected != actual:
-                raise ValueError("Promoted chunk set failed integrity validation")
+                raise DeterministicImportError(
+                    "promote_version", "检索分块完整性验证失败，旧版本保持可用。"
+                )
             conn.execute(
                 """
                 UPDATE source_versions

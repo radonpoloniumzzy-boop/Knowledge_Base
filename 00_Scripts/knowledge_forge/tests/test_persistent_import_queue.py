@@ -35,6 +35,7 @@ def test_bulk_submit_creates_one_durable_waiting_task_per_file(tmp_path):
     assert reopened.summary() == {
         "waiting": 2,
         "processing": 0,
+        "paused": 0,
         "completed": 0,
         "needs_attention": 0,
     }
@@ -53,6 +54,7 @@ def test_only_one_queue_instance_can_own_and_process_work(tmp_path):
     assert first.summary() == {
         "waiting": 1,
         "processing": 0,
+        "paused": 0,
         "completed": 1,
         "needs_attention": 0,
     }
@@ -98,8 +100,9 @@ def test_processor_failure_is_persisted_as_needs_attention(tmp_path):
     assert failing.process_next() is True
     failed = failing.get_task(task.id)
     assert failed.status == "needs_attention"
-    assert failed.current_stage == "failed"
-    assert failed.error == "cannot read"
+    assert failed.failed_stage == "processing"
+    assert failed.user_message == "处理未能完成，请检查文件内容或设置后继续。"
+    assert failed.error is None
     failing.release_worker()
 
 

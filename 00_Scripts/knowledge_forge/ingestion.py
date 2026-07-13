@@ -15,7 +15,30 @@ WAITING = "waiting"
 PROCESSING = "processing"
 COMPLETED = "completed"
 NEEDS_ATTENTION = "needs_attention"
+PAUSED = "paused"
 QUEUE_NAME = "text-import"
+RETRY_DELAYS = (5.0, 30.0, 120.0)
+
+
+class ImportProcessingError(Exception):
+    failure_type = "deterministic"
+
+    def __init__(self, stage: str, user_message: str) -> None:
+        super().__init__(user_message)
+        self.stage = stage
+        self.user_message = user_message
+
+
+class TransientImportError(ImportProcessingError):
+    failure_type = "transient"
+
+
+class DeterministicImportError(ImportProcessingError):
+    failure_type = "deterministic"
+
+
+class TaskPaused(Exception):
+    pass
 
 
 @dataclass(frozen=True)
@@ -32,6 +55,12 @@ class ImportTask:
     completed_at: str | None
     source_id: int | None
     version_id: int | None
+    failure_type: str | None
+    failed_stage: str | None
+    user_message: str | None
+    retry_count: int
+    next_attempt_at: float | None
+    pause_requested: bool
 
 
 class PersistentTextImportQueue:
@@ -45,12 +74,16 @@ class PersistentTextImportQueue:
         *,
         poll_interval: float = 0.5,
         lease_seconds: float = 10.0,
+        retry_delays: tuple[float, ...] = RETRY_DELAYS,
+        clock: Callable[[], float] = time.time,
     ) -> None:
         self.database_path = Path(database_path)
         self._accept_upload = accept_upload
         self._process_file = process_file
         self._poll_interval = poll_interval
         self._lease_seconds = lease_seconds
+        self._retry_delays = retry_delays
+        self._clock = clock
         self._owner_id = uuid4().hex
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -76,17 +109,20 @@ class PersistentTextImportQueue:
             row = conn.execute("SELECT * FROM import_tasks WHERE id=?", (task_id,)).fetchone()
         if row is None:
             raise KeyError(task_id)
-        return ImportTask(**dict(row))
+        return self._task_from_row(row)
 
     def list_tasks(self, limit: int = 50) -> list[ImportTask]:
         with connect(self.database_path) as conn:
             rows = conn.execute(
                 "SELECT * FROM import_tasks ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
-        return [ImportTask(**dict(row)) for row in rows]
+        return [self._task_from_row(row) for row in rows]
 
     def summary(self) -> dict[str, int]:
-        counts = {status: 0 for status in (WAITING, PROCESSING, COMPLETED, NEEDS_ATTENTION)}
+        counts = {
+            status: 0
+            for status in (WAITING, PROCESSING, PAUSED, COMPLETED, NEEDS_ATTENTION)
+        }
         with connect(self.database_path) as conn:
             rows = conn.execute(
                 "SELECT status, COUNT(*) AS count FROM import_tasks GROUP BY status"
@@ -97,7 +133,7 @@ class PersistentTextImportQueue:
         return counts
 
     def acquire_worker(self) -> bool:
-        now = time.time()
+        now = self._clock()
         with connect(self.database_path) as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(
@@ -132,7 +168,8 @@ class PersistentTextImportQueue:
             cursor = conn.execute(
                 """
                 UPDATE import_tasks
-                SET status='waiting', current_stage='queued', updated_at=CURRENT_TIMESTAMP
+                SET status=CASE WHEN pause_requested=1 THEN 'paused' ELSE 'waiting' END,
+                    updated_at=CURRENT_TIMESTAMP
                 WHERE status='processing'
                 """
             )
@@ -144,7 +181,14 @@ class PersistentTextImportQueue:
         with connect(self.database_path) as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
-                "SELECT id FROM import_tasks WHERE status='waiting' ORDER BY id LIMIT 1"
+                """
+                SELECT id FROM import_tasks
+                WHERE status='waiting'
+                  AND pause_requested=0
+                  AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+                ORDER BY id LIMIT 1
+                """,
+                (self._clock(),),
             ).fetchone()
             if row is None:
                 return None
@@ -167,29 +211,121 @@ class PersistentTextImportQueue:
             return False
         try:
             self._process_file(task)
-        except Exception as exc:
+        except TaskPaused:
             with connect(self.database_path) as conn:
                 conn.execute(
                     """
-                    UPDATE import_tasks
-                    SET status='needs_attention', current_stage='failed', error=?,
-                        completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
-                    WHERE id=?
+                    UPDATE import_tasks SET status='paused', pause_requested=0,
+                        updated_at=CURRENT_TIMESTAMP WHERE id=?
                     """,
-                    (str(exc), task.id),
+                    (task.id,),
                 )
+        except Exception as exc:
+            self._record_failure(task, exc)
         else:
             with connect(self.database_path) as conn:
                 conn.execute(
                     """
                     UPDATE import_tasks
                     SET status='completed', current_stage='completed', error=NULL,
+                        failure_type=NULL, failed_stage=NULL, user_message=NULL,
+                        next_attempt_at=NULL, pause_requested=0,
                         completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
                     WHERE id=?
                     """,
                     (task.id,),
                 )
         return True
+
+    def pause(self, task_id: int) -> ImportTask:
+        with connect(self.database_path) as conn:
+            row = conn.execute("SELECT status FROM import_tasks WHERE id=?", (task_id,)).fetchone()
+            if row is None:
+                raise KeyError(task_id)
+            if row["status"] == PROCESSING:
+                conn.execute(
+                    "UPDATE import_tasks SET pause_requested=1, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    (task_id,),
+                )
+            elif row["status"] == WAITING:
+                conn.execute(
+                    """
+                    UPDATE import_tasks SET status='paused', pause_requested=0,
+                        updated_at=CURRENT_TIMESTAMP WHERE id=?
+                    """,
+                    (task_id,),
+                )
+        return self.get_task(task_id)
+
+    def resume(self, task_id: int) -> ImportTask:
+        with connect(self.database_path) as conn:
+            row = conn.execute("SELECT status FROM import_tasks WHERE id=?", (task_id,)).fetchone()
+            if row is None:
+                raise KeyError(task_id)
+            if row["status"] in {PAUSED, NEEDS_ATTENTION}:
+                conn.execute(
+                    """
+                    UPDATE import_tasks
+                    SET status='waiting', pause_requested=0, retry_count=0,
+                        next_attempt_at=NULL, failure_type=NULL, failed_stage=NULL,
+                        user_message=NULL, error=NULL, completed_at=NULL,
+                        updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?
+                    """,
+                    (task_id,),
+                )
+        return self.get_task(task_id)
+
+    def _record_failure(self, task: ImportTask, exc: Exception) -> None:
+        task = self.get_task(task.id)
+        failure = self._normalise_failure(task, exc)
+        if failure.failure_type == "transient" and task.retry_count < len(self._retry_delays):
+            retry_count = task.retry_count + 1
+            next_attempt = self._clock() + self._retry_delays[task.retry_count]
+            status = WAITING
+        else:
+            retry_count = task.retry_count
+            next_attempt = None
+            status = NEEDS_ATTENTION
+        with connect(self.database_path) as conn:
+            conn.execute(
+                """
+                UPDATE import_tasks SET status=?, failure_type=?, failed_stage=?,
+                    user_message=?, error=NULL, retry_count=?, next_attempt_at=?,
+                    completed_at=CASE WHEN ?='needs_attention' THEN CURRENT_TIMESTAMP ELSE NULL END,
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE id=?
+                """,
+                (
+                    status,
+                    failure.failure_type,
+                    failure.stage,
+                    failure.user_message,
+                    retry_count,
+                    next_attempt,
+                    status,
+                    task.id,
+                ),
+            )
+
+    @staticmethod
+    def _normalise_failure(task: ImportTask, exc: Exception) -> ImportProcessingError:
+        if isinstance(exc, ImportProcessingError):
+            return exc
+        if isinstance(exc, PermissionError):
+            return TransientImportError(task.current_stage, "文件暂时被占用，请稍后重试。")
+        if isinstance(exc, OSError):
+            return TransientImportError(task.current_stage, "读取文件时遇到临时问题，系统将自动重试。")
+        return DeterministicImportError(
+            task.current_stage,
+            "处理未能完成，请检查文件内容或设置后继续。",
+        )
+
+    @staticmethod
+    def _task_from_row(row: sqlite3.Row) -> ImportTask:
+        data = dict(row)
+        data["pause_requested"] = bool(data["pause_requested"])
+        return ImportTask(**data)
 
     def start(self) -> bool:
         if self._thread is not None and self._thread.is_alive():
@@ -242,5 +378,5 @@ class PersistentTextImportQueue:
         return bool(
             row
             and row["owner_id"] == self._owner_id
-            and float(row["expires_at"]) > time.time()
+            and float(row["expires_at"]) > self._clock()
         )
