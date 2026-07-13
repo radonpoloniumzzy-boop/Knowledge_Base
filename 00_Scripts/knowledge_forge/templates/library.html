@@ -1,189 +1,61 @@
 {% extends "base.html" %}
 {% block title %}知识库 - 知识炼制台{% endblock %}
+{% macro params(target_page=library_page.page, target_selected=0) -%}
+page={{ target_page }}&page_size={{ library_page.page_size }}&sort={{ sort }}{% if domain %}&domain={{ domain }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if category %}&category={{ category|urlencode }}{% endif %}{% if tag %}&tag={{ tag|urlencode }}{% endif %}{% if status %}&status={{ status|urlencode }}{% endif %}{% if artifact_type %}&artifact_type={{ artifact_type|urlencode }}{% endif %}{% if target_selected %}&selected={{ target_selected }}{% endif %}
+{%- endmacro %}
 {% block content %}
-<section class="page-head">
-  <div>
-    <p class="eyebrow">Library</p>
-    <h1>知识库</h1>
-    <p>按主分类、强标签、产物和状态筛选资料。</p>
-  </div>
+<section class="page-head archive-head">
+  <div><p class="eyebrow">Arcane archive</p><h1>魔法档案馆</h1><p>通过知识域找到书架，再用目录筛选定位具体资料。</p></div>
 </section>
 
-<section class="domain-strip">
-  <a class="{{ 'active' if not category else '' }}" href="/library">全部</a>
-  {% for cat in categories[:12] %}
-  <a class="{{ 'active' if category == cat.name else '' }}" href="/library?category={{ cat.name | urlencode }}">{{ cat.label }} <span>{{ cat.count }}</span></a>
+<section class="archive-shelves" aria-label="知识域书柜">
+  <a class="archive-shelf {{ 'active' if not domain else '' }}" href="/library" style="--shelf-accent:#7b6753"><span>总馆目录</span><strong>{{ library_page.total if not domain else '全部' }}</strong></a>
+  {% for item in domains[:8] %}
+  <a class="archive-shelf accent-{{ item.domain.accent_key }} {{ 'active' if domain == item.domain.id else '' }}" href="/library?domain={{ item.domain.id }}"><span>{{ item.domain.name }}</span><strong>{{ item.count }}</strong></a>
   {% endfor %}
+  {% if domains|length > 8 %}
+  <details class="all-shelves"><summary>全部知识域</summary><div>
+    {% for item in domains %}<a href="/library?domain={{ item.domain.id }}">{{ item.domain.name }} <span>{{ item.count }}</span></a>{% endfor %}
+  </div></details>
+  {% endif %}
 </section>
 
-<section class="library-grid">
-  <div class="panel">
-    <div class="panel-head">
-      <h2>文件列表</h2>
-      <span>{{ files|length }} 条结果</span>
-    </div>
-    <form class="filter-bar rich-filter-bar" action="/library" method="get">
-      <input name="q" value="{{ q or '' }}" placeholder="标题、路径或标签" aria-label="搜索资料">
-      <select name="category" data-category-filter aria-label="按主分类筛选">
-        <option value="">全部主分类</option>
-        {% for cat in categories %}
-        <option value="{{ cat.name }}" {% if category == cat.name %}selected{% endif %}>{{ cat.label }}（{{ cat.count }}）</option>
-        {% endfor %}
-      </select>
-      <select name="tag" data-tag-filter data-selected="{{ tag or '' }}" aria-label="按标签筛选">
-        <option value="">全部标签</option>
-      </select>
-      <select name="status" aria-label="按状态筛选">
-        <option value="">全部状态</option>
-        <option value="completed" {% if status == 'completed' %}selected{% endif %}>已完成</option>
-        <option value="failed" {% if status == 'failed' %}selected{% endif %}>处理失败</option>
-        <option value="needs_review" {% if status == 'needs_review' %}selected{% endif %}>待复核</option>
-        <option value="pending" {% if status == 'pending' %}selected{% endif %}>等待处理</option>
-      </select>
-      <select name="artifact_type" aria-label="按产物筛选">
-        <option value="">全部产物</option>
-        {% for a in ['clean', 'structure', 'sop', 'insight'] %}
-        <option value="{{ a }}" {% if artifact_type == a %}selected{% endif %}>{{ a }}</option>
-        {% endfor %}
-      </select>
+<section class="library-grid archive-catalog">
+  <div class="panel catalog-panel">
+    <div class="panel-head"><div><p class="panel-kicker">Catalog ledger</p><h2>资料目录</h2></div><span>共 {{ library_page.total }} 条</span></div>
+    <form class="filter-bar rich-filter-bar archive-filters" action="/library" method="get">
+      {% if domain %}<input type="hidden" name="domain" value="{{ domain }}">{% endif %}
+      <input name="q" value="{{ q or '' }}" placeholder="标题、路径、分类或标签" aria-label="搜索资料">
+      <select name="category" data-category-filter aria-label="按主分类筛选"><option value="">全部主分类</option>{% for cat in categories %}<option value="{{ cat.name }}" {% if category == cat.name %}selected{% endif %}>{{ cat.label }}（{{ cat.count }}）</option>{% endfor %}</select>
+      <select name="tag" data-tag-filter data-selected="{{ tag or '' }}" aria-label="按标签筛选"><option value="">全部标签</option></select>
+      <select name="status" aria-label="按状态筛选"><option value="">全部状态</option><option value="completed" {% if status=='completed' %}selected{% endif %}>已完成</option><option value="failed" {% if status=='failed' %}selected{% endif %}>处理失败</option><option value="needs_review" {% if status=='needs_review' %}selected{% endif %}>待复核</option><option value="pending" {% if status=='pending' %}selected{% endif %}>等待处理</option></select>
+      <select name="artifact_type" aria-label="按产物筛选"><option value="">全部产物</option>{% for a in ['clean','structure','sop','insight'] %}<option value="{{ a }}" {% if artifact_type==a %}selected{% endif %}>{{ a|upper }}</option>{% endfor %}</select>
+      <select name="sort" aria-label="排序"><option value="updated_desc" {% if sort=='updated_desc' %}selected{% endif %}>最近更新</option><option value="title_asc" {% if sort=='title_asc' %}selected{% endif %}>标题 A-Z</option><option value="category_asc" {% if sort=='category_asc' %}selected{% endif %}>按分类</option><option value="created_desc" {% if sort=='created_desc' %}selected{% endif %}>最近创建</option></select>
+      <select name="page_size" aria-label="每页数量">{% for size in [25,50,100] %}<option value="{{ size }}" {% if library_page.page_size==size %}selected{% endif %}>每页 {{ size }}</option>{% endfor %}</select>
       <button class="btn secondary" type="submit">筛选</button>
     </form>
-    <div class="table-scroll"><table class="data-table library-table">
-      <thead>
-        <tr>
-          <th>文件</th>
-          <th>主分类</th>
-          <th>强标签</th>
-          <th>产物</th>
-          <th>状态</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for file in files %}
-        <tr class="{{ 'selected-row' if selected == file.id else '' }}">
-          <td>
-            <strong>{{ file.title }}</strong>
-            <span class="path">{{ file.source_path }}</span>
-          </td>
-          <td>{{ file.main_category or '未分类' }}{% if file.sub_category %}<span class="path">{{ file.sub_category }}</span>{% endif %}</td>
-          <td class="tags">{{ file.tags or '待补充' }}</td>
-          <td>
-            <span class="pill">SOP {{ file.sop_count }}</span>
-            <span class="pill">Insight {{ file.insight_count }}</span>
-          </td>
-          <td><span class="badge {{ file.status }}">
-            {% if file.status == 'completed' %}已完成
-            {% elif file.status == 'failed' %}处理失败
-            {% elif file.status == 'needs_review' %}待复核
-            {% elif file.status == 'pending' %}等待处理
-            {% else %}{{ file.status }}{% endif %}
-          </span></td>
-          <td>
-            <a class="link" href="/library?selected={{ file.id }}{% if q %}&q={{ q | urlencode }}{% endif %}{% if category %}&category={{ category | urlencode }}{% endif %}{% if tag %}&tag={{ tag | urlencode }}{% endif %}{% if status %}&status={{ status | urlencode }}{% endif %}{% if artifact_type %}&artifact_type={{ artifact_type | urlencode }}{% endif %}">预览</a>
-            {% if file.source_id %}
-            <form class="table-action" action="/files/{{ file.id }}/recycle" method="post" onsubmit="return confirm('确定将整份知识资料移入回收站吗？30 天内可以恢复。');">
-              <button class="link danger-link" type="submit">删除</button>
-            </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="6" class="empty">没有找到资料。可以先导入资料，或放宽筛选条件。</td></tr>
-        {% endfor %}
-      </tbody>
+    <div class="table-scroll"><table class="data-table library-table archive-table">
+      <thead><tr><th>资料</th><th>分类</th><th>强标签</th><th>产物</th><th>状态</th><th></th></tr></thead>
+      <tbody>{% for file in files %}<tr class="{{ 'selected-row' if selected==file.id else '' }}">
+        <td><strong>{{ file.title }}</strong><span class="path">{{ file.source_path }}</span></td>
+        <td>{{ file.main_category or '未分类' }}{% if file.sub_category %}<span class="path">{{ file.sub_category }}</span>{% endif %}</td>
+        <td class="tags">{{ file.tags or '待补充' }}</td><td><span class="pill">SOP {{ file.sop_count }}</span><span class="pill">Insight {{ file.insight_count }}</span></td>
+        <td><span class="badge {{ file.status }}">{% if file.status=='completed' %}已完成{% elif file.status=='needs_review' %}待复核{% elif file.status=='pending' %}等待处理{% else %}{{ file.status }}{% endif %}</span></td>
+        <td><a class="link" href="/library?{{ params(target_selected=file.id) }}">预览</a>{% if file.source_id %}<form class="table-action" action="/files/{{ file.id }}/recycle" method="post" onsubmit="return confirm('确定将整份知识资料移入回收站吗？30 天内可以恢复。');"><button class="link danger-link" type="submit">删除</button></form>{% endif %}</td>
+      </tr>{% else %}<tr><td colspan="6" class="empty">没有找到资料。可以放宽筛选条件。</td></tr>{% endfor %}</tbody>
     </table></div>
+    <nav class="catalog-pagination" aria-label="资料分页">
+      <a class="btn tiny" href="/library?{{ params(1) }}" {% if library_page.page==1 %}aria-disabled="true"{% endif %}>首页</a>
+      <a class="btn tiny" href="/library?{{ params(library_page.page-1) }}" {% if library_page.page==1 %}aria-disabled="true"{% endif %}>上一页</a>
+      <span>第 {{ library_page.page }} / {{ library_page.page_count }} 页</span>
+      <a class="btn tiny" href="/library?{{ params(library_page.page+1) }}" {% if library_page.page==library_page.page_count %}aria-disabled="true"{% endif %}>下一页</a>
+      <a class="btn tiny" href="/library?{{ params(library_page.page_count) }}" {% if library_page.page==library_page.page_count %}aria-disabled="true"{% endif %}>末页</a>
+    </nav>
   </div>
-
-  <aside class="detail-drawer">
-    {% if selected_detail %}
-    <div class="panel-head">
-      <h2>详情</h2>
-      <a class="link" href="/files/{{ selected_detail.file.id }}">完整页</a>
-    </div>
-    <h3>{{ selected_detail.file.title }}</h3>
-    <p class="path">{{ selected_detail.file.source_path }}</p>
-    <div class="drawer-tags">
-      {% for item in selected_detail.tags[:8] %}
-      <span>{{ item.name }}</span>
-      {% endfor %}
-    </div>
-    <dl class="meta-list">
-      <dt>类型</dt><dd>{{ selected_detail.file.library_type }}</dd>
-      <dt>分类</dt><dd>{{ selected_detail.file.main_category or '未分类' }}</dd>
-      <dt>状态</dt><dd>{{ selected_detail.file.status }}</dd>
-    </dl>
-    <h4>产物</h4>
-    {% for item in selected_detail.artifacts[:5] %}
-    <div class="drawer-artifact">
-      <strong>{{ item.artifact.artifact_type }}</strong>
-      <span>{{ item.artifact.title }}</span>
-    </div>
-    {% endfor %}
-    {% else %}
-    <div class="empty">点击文件行的“预览”，这里会显示右侧详情。</div>
-    {% endif %}
-  </aside>
+  <aside class="detail-drawer archive-drawer">{% if selected_detail %}<div class="panel-head"><h2>抽取预览</h2><a class="link" href="/files/{{ selected_detail.file.id }}">进入阅读台</a></div><h3>{{ selected_detail.file.title }}</h3><p class="path">{{ selected_detail.file.source_path }}</p><div class="drawer-tags">{% for item in selected_detail.tags[:8] %}<span>{{ item.name }}</span>{% endfor %}</div><dl class="meta-list"><dt>类型</dt><dd>{{ selected_detail.file.library_type }}</dd><dt>分类</dt><dd>{{ selected_detail.file.main_category or '未分类' }}</dd><dt>状态</dt><dd>{{ selected_detail.file.status }}</dd></dl>{% else %}<div class="empty">选择“预览”，这里会像抽出一本档案一样显示摘要。</div>{% endif %}</aside>
 </section>
-
+<script>window.KF_TAG_GROUPS={{ tag_groups|tojson }};</script>
 <script>
-  window.KF_TAG_GROUPS = {{ tag_groups | tojson }};
-</script>
-<script>
-  (function () {
-    const categorySelect = document.querySelector("[data-category-filter]");
-    const tagSelect = document.querySelector("[data-tag-filter]");
-    if (!categorySelect || !tagSelect || !window.KF_TAG_GROUPS) return;
-
-    const groups = window.KF_TAG_GROUPS;
-    const allTags = [];
-    groups.forEach((group) => {
-      allTags.push({ value: group.value, label: `全部 ${group.label}`, count: group.count, top: group.value });
-      group.children.forEach((child) => allTags.push({ ...child, top: group.value }));
-    });
-
-    function addOption(value, label, count) {
-      const option = document.createElement("option");
-      option.value = value;
-      option.textContent = count ? `${label}（${count}）` : label;
-      tagSelect.appendChild(option);
-    }
-
-    function rebuildTags(clearSelection) {
-      const selected = clearSelection ? "" : (tagSelect.dataset.selected || tagSelect.value || "");
-      const category = categorySelect.value;
-      tagSelect.innerHTML = "";
-      addOption("", category ? "全部标签" : "全部大类标签");
-
-      let options = [];
-      if (category) {
-        const group = groups.find((item) => item.value === category);
-        if (group) {
-          options = [
-            { value: group.value, label: `全部 ${group.label}`, count: group.count, top: group.value },
-            ...group.children.map((child) => ({ ...child, top: group.value })),
-          ];
-        }
-      } else {
-        options = groups.map((group) => ({
-          value: group.value,
-          label: `全部 ${group.label}`,
-          count: group.count,
-          top: group.value,
-        }));
-      }
-
-      options.forEach((item) => addOption(item.value, item.label, item.count));
-      if (selected && !options.some((item) => item.value === selected)) {
-        const found = allTags.find((item) => item.value === selected);
-        if (found) addOption(found.value, found.full_label || found.label, found.count);
-      }
-      tagSelect.value = selected;
-      tagSelect.dataset.selected = "";
-    }
-
-    categorySelect.addEventListener("change", () => rebuildTags(true));
-    rebuildTags(false);
-  })();
+(()=>{const c=document.querySelector('[data-category-filter]'),t=document.querySelector('[data-tag-filter]');if(!c||!t)return;const g=window.KF_TAG_GROUPS||[];function rebuild(clear){const selected=clear?'':(t.dataset.selected||'');t.innerHTML='<option value="">全部标签</option>';const groups=c.value?g.filter(x=>x.value===c.value):g;groups.forEach(x=>{const o=new Option(`全部 ${x.label}（${x.count}）`,x.value);t.add(o);if(c.value)x.children.forEach(ch=>t.add(new Option(`${ch.label}（${ch.count}）`,ch.value)))});if(selected&&!Array.from(t.options).some(o=>o.value===selected))t.add(new Option(selected,selected));t.value=selected;t.dataset.selected=''}c.addEventListener('change',()=>rebuild(true));rebuild(false)})();
 </script>
 {% endblock %}

@@ -246,18 +246,19 @@ def test_file_metadata_can_be_edited_from_detail_page(monkeypatch):
 
 
 def test_library_shows_source_path_and_recycle_action(monkeypatch):
-    monkeypatch.setattr(
-        app_module.services,
-        "list_files",
-        lambda **_kwargs: [{
+    rows = [{
             "id": 7, "title": "透视基础", "filename": "lesson.md",
             "source_path": r"D:\Courses\Art\lesson.md", "main_category": "08_Art",
             "sub_category": "透视结构", "tags": "08_Art/透视结构",
             "sop_count": 1, "insight_count": 1, "status": "completed", "source_id": 81,
-        }],
+        }]
+    monkeypatch.setattr(
+        app_module.services, "search_library_page",
+        lambda **_kwargs: app_module.services.LibraryPage(rows, 1, 1, 50, 1),
     )
     monkeypatch.setattr(app_module.services, "list_category_options", lambda: [])
     monkeypatch.setattr(app_module.services, "tag_picker_groups", lambda: [])
+    monkeypatch.setattr(app_module.services, "list_knowledge_domains", lambda: [])
     client = TestClient(app_module.app)
 
     response = client.get("/library")

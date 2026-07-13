@@ -44,6 +44,15 @@ class PackExportBlockedError(ValueError):
         self.preflight = preflight
 
 
+@dataclass(frozen=True)
+class LibraryPage:
+    items: list[Any]
+    total: int
+    page: int
+    page_size: int
+    page_count: int
+
+
 ROOT_LABELS = {
     "Uncategorized": "未归类",
     "00_Unsorted": "未归类",
@@ -758,6 +767,122 @@ def list_files(q: str = "", category: str = "", tag: str = "", status: str = "",
             """,
             params,
         ).fetchall()
+
+
+def _library_filter_parts(
+    q: str = "", category: str = "", tag: str = "", status: str = "",
+    artifact_type: str = "", domain: int = 0,
+) -> tuple[list[str], list[Any]]:
+    clauses = [
+        _active_file_clause("f"),
+        """
+        (NOT EXISTS (SELECT 1 FROM source_versions vv WHERE vv.standard_file_id=f.id)
+         OR EXISTS (
+            SELECT 1 FROM source_versions cv
+            JOIN knowledge_sources cs ON cs.id=cv.source_id
+            WHERE cv.standard_file_id=f.id AND cs.current_version_id=cv.id
+              AND cs.deleted_at IS NULL AND cs.recycle_requested_at IS NULL
+         ))
+        """,
+    ]
+    params: list[Any] = []
+    if q:
+        like = f"%{q}%"
+        clauses.append("""
+            (f.title LIKE ? OR f.filename LIKE ? OR f.source_path LIKE ?
+             OR f.main_category LIKE ? OR f.sub_category LIKE ? OR EXISTS (
+                SELECT 1 FROM tag_assignments qa JOIN tags qt ON qt.id=qa.tag_id
+                WHERE qa.target_type='file' AND qa.target_id=f.id AND qt.name LIKE ?))
+        """)
+        params.extend([like] * 6)
+    if category:
+        clauses.append("f.main_category=?")
+        params.append(category)
+    if tag:
+        clauses.append("""
+            EXISTS (SELECT 1 FROM tag_assignments ta JOIN tags t ON t.id=ta.tag_id
+                    WHERE ta.target_type='file' AND ta.target_id=f.id
+                      AND ta.scope='file_strong' AND ta.status!='user_rejected'
+                      AND (t.name=? OR t.name LIKE ?))
+        """)
+        params.extend([tag, f"{tag}/%"])
+    if status:
+        clauses.append("f.status=?")
+        params.append(status)
+    if artifact_type:
+        clauses.append("EXISTS (SELECT 1 FROM artifacts a WHERE a.file_id=f.id AND a.artifact_type=?)")
+        params.append(artifact_type)
+    if domain:
+        clauses.append("""
+            EXISTS (
+                SELECT 1 FROM knowledge_domain_rules dr
+                JOIN knowledge_domains kd ON kd.id=dr.domain_id
+                WHERE dr.domain_id=? AND kd.enabled=1 AND (
+                    (dr.rule_type='main_category' AND f.main_category=dr.match_value)
+                    OR (dr.rule_type='tag_prefix' AND EXISTS (
+                        SELECT 1 FROM tag_assignments da JOIN tags dt ON dt.id=da.tag_id
+                        WHERE da.target_type='file' AND da.target_id=f.id
+                          AND da.scope='file_strong' AND da.status!='user_rejected'
+                          AND (dt.name=dr.match_value OR dt.name LIKE dr.match_value || '/%')
+                    ))
+                )
+            )
+        """)
+        params.append(domain)
+    return clauses, params
+
+
+def search_library_page(
+    q: str = "", category: str = "", tag: str = "", status: str = "",
+    artifact_type: str = "", domain: int = 0, page: int = 1,
+    page_size: int = 50, sort: str = "updated_desc",
+) -> LibraryPage:
+    page_size = page_size if page_size in {25, 50, 100} else 50
+    sort_sql = {
+        "updated_desc": "f.updated_at DESC, f.id DESC",
+        "title_asc": "f.title COLLATE NOCASE ASC, f.id ASC",
+        "category_asc": "COALESCE(f.main_category, '') ASC, f.title COLLATE NOCASE ASC",
+        "created_desc": "f.created_at DESC, f.id DESC",
+    }.get(sort, "f.updated_at DESC, f.id DESC")
+    clauses, params = _library_filter_parts(q, category, tag, status, artifact_type, domain)
+    where = " AND ".join(f"({clause})" for clause in clauses)
+    with connect() as conn:
+        total = int(conn.execute(f"SELECT COUNT(*) FROM files f WHERE {where}", params).fetchone()[0])
+        page_count = max(1, (total + page_size - 1) // page_size)
+        page = max(1, min(int(page or 1), page_count))
+        rows = conn.execute(
+            f"""
+            SELECT f.*,
+              (SELECT GROUP_CONCAT(t.name, '、') FROM tag_assignments ta JOIN tags t ON t.id=ta.tag_id WHERE ta.target_type='file' AND ta.target_id=f.id AND ta.scope='file_strong') AS tags,
+              (SELECT COUNT(*) FROM artifacts a WHERE a.file_id=f.id AND a.artifact_type='sop') AS sop_count,
+              (SELECT COUNT(*) FROM artifacts a WHERE a.file_id=f.id AND a.artifact_type='insight') AS insight_count,
+              COALESCE((SELECT sv.source_id FROM source_versions sv WHERE sv.standard_file_id=f.id LIMIT 1),
+                       (SELECT ks.id FROM knowledge_sources ks WHERE ks.source_file_id=f.id LIMIT 1)) AS source_id
+            FROM files f WHERE {where}
+            ORDER BY {sort_sql} LIMIT ? OFFSET ?
+            """,
+            (*params, page_size, (page - 1) * page_size),
+        ).fetchall()
+    return LibraryPage(list(rows), total, page, page_size, page_count)
+
+
+def list_knowledge_domains(enabled_only: bool = True) -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM knowledge_domains " + ("WHERE enabled=1 " if enabled_only else "") + "ORDER BY sort_order, id"
+        ).fetchall()
+        output = []
+        for row in rows:
+            clauses, params = _library_filter_parts(domain=int(row["id"]))
+            count = int(conn.execute(
+                f"SELECT COUNT(*) FROM files f WHERE {' AND '.join(f'({c})' for c in clauses)}", params
+            ).fetchone()[0])
+            rules = conn.execute(
+                "SELECT * FROM knowledge_domain_rules WHERE domain_id=? ORDER BY rule_type, match_value",
+                (row["id"],),
+            ).fetchall()
+            output.append({"domain": row, "count": count, "rules": rules})
+    return output
 
 
 def list_categories() -> list[Any]:

@@ -18,6 +18,6 @@ def test_database_initialization_uses_isolated_paths_and_migrations(tmp_path):
             """
         )
 
-    assert report.to_version == 11
-    assert version == 11
+    assert report.to_version == 12
+    assert version == 12
     assert database_path.exists()

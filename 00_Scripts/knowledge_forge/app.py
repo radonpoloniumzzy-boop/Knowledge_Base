@@ -169,15 +169,25 @@ def resume_import(task_id: int):
 
 
 @app.get("/library", response_class=HTMLResponse)
-def library(request: Request, q: str = "", category: str = "", tag: str = "", status: str = "", artifact_type: str = "", selected: int = 0):
+def library(
+    request: Request, q: str = "", category: str = "", tag: str = "",
+    status: str = "", artifact_type: str = "", selected: int = 0,
+    domain: int = 0, page: int = 1, page_size: int = 50,
+    sort: str = "updated_desc",
+):
     selected_detail = services.file_detail(selected) if selected else None
+    result = services.search_library_page(
+        q=q, category=category, tag=tag, status=status, artifact_type=artifact_type,
+        domain=domain, page=page, page_size=page_size, sort=sort,
+    )
     return templates.TemplateResponse(
         request,
         "library.html",
         ctx(
             request,
             "library",
-            files=services.list_files(q=q, category=category, tag=tag, status=status, artifact_type=artifact_type),
+            files=result.items, library_page=result,
+            domains=services.list_knowledge_domains(), domain=domain,
             categories=services.list_category_options(),
             tag_groups=services.tag_picker_groups(),
             q=q,
@@ -187,6 +197,7 @@ def library(request: Request, q: str = "", category: str = "", tag: str = "", st
             artifact_type=artifact_type,
             selected=selected,
             selected_detail=selected_detail,
+            page_size=page_size, sort=sort,
         ),
     )
 

@@ -404,6 +404,62 @@ def _add_pack_visual_identity(conn: sqlite3.Connection) -> None:
         )
 
 
+def _add_configurable_knowledge_domains(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE knowledge_domains (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            accent_key TEXT NOT NULL DEFAULT 'forest',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE knowledge_domain_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            domain_id INTEGER NOT NULL,
+            rule_type TEXT NOT NULL CHECK(rule_type IN ('main_category', 'tag_prefix')),
+            match_value TEXT NOT NULL,
+            UNIQUE(domain_id, rule_type, match_value),
+            FOREIGN KEY(domain_id) REFERENCES knowledge_domains(id) ON DELETE CASCADE
+        );
+        CREATE INDEX idx_domain_rules_domain ON knowledge_domain_rules(domain_id, rule_type);
+        """
+    )
+    seeds = (
+        ("金融", "brass", ("01_Finance",)),
+        ("艺术", "wine", ("08_Art",)),
+        ("查理芒格", "plum", ("01_Charlie_Munger",)),
+        ("编程", "blue", ("04_Coding",)),
+        ("易经智慧", "brass", ("01_易经智慧", "01_易经系列")),
+        ("企业管理", "forest", ("05_Ops",)),
+        ("销售", "wine", ("03_Sales",)),
+        ("传媒", "plum", ("02_Media",)),
+        ("AI 技术", "blue", ("01_AI_Technology",)),
+        ("沃伦巴菲特", "brass", ("01_Warren_Buffett",)),
+        ("情绪关系", "wine", ("06_Emotion",)),
+        ("法律合规", "forest", ("07_Law",)),
+        ("剪辑摄影", "plum", ("09_Editing_Photography", "剪辑摄影")),
+        ("通用知识", "blue", ("99_General",)),
+    )
+    for order, (name, accent, roots) in enumerate(seeds):
+        domain_id = conn.execute(
+            "INSERT INTO knowledge_domains(name, accent_key, sort_order) VALUES (?, ?, ?)",
+            (name, accent, order),
+        ).lastrowid
+        for root in roots:
+            for value in (root, f"{root}_Intel"):
+                conn.execute(
+                    "INSERT OR IGNORE INTO knowledge_domain_rules(domain_id, rule_type, match_value) VALUES (?, 'tag_prefix', ?)",
+                    (domain_id, value),
+                )
+            conn.execute(
+                "INSERT OR IGNORE INTO knowledge_domain_rules(domain_id, rule_type, match_value) VALUES (?, 'main_category', ?)",
+                (domain_id, root),
+            )
+
+
 DEFAULT_MIGRATIONS = (
     Migration(1, "initial-schema", _apply_initial_schema),
     Migration(2, "persistent-text-import-queue", _add_persistent_import_queue),
@@ -416,6 +472,7 @@ DEFAULT_MIGRATIONS = (
     Migration(9, "legacy-knowledge-migration-tracking", _add_legacy_knowledge_migration_tracking),
     Migration(10, "contract-legacy-import-settings", _contract_legacy_import_settings),
     Migration(11, "pack-visual-identity", _add_pack_visual_identity),
+    Migration(12, "configurable-knowledge-domains", _add_configurable_knowledge_domains),
 )
 
 
