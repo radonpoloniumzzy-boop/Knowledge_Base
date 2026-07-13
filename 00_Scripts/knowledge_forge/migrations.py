@@ -194,9 +194,64 @@ def _add_persistent_import_queue(conn: sqlite3.Connection) -> None:
     )
 
 
+def _add_atomic_core_processing(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        ALTER TABLE import_tasks ADD COLUMN source_id INTEGER;
+        ALTER TABLE import_tasks ADD COLUMN version_id INTEGER;
+
+        CREATE TABLE knowledge_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_file_id INTEGER NOT NULL UNIQUE,
+            current_version_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE source_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL,
+            upload_file_id INTEGER NOT NULL,
+            standard_file_id INTEGER,
+            standard_path TEXT,
+            status TEXT NOT NULL DEFAULT 'processing',
+            review_status TEXT NOT NULL DEFAULT 'unreviewed',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            available_at TEXT,
+            FOREIGN KEY(source_id) REFERENCES knowledge_sources(id) ON DELETE CASCADE,
+            FOREIGN KEY(standard_file_id) REFERENCES files(id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE import_stage_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            stage_name TEXT NOT NULL,
+            payload_text TEXT,
+            completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(task_id, stage_name),
+            FOREIGN KEY(task_id) REFERENCES import_tasks(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE staged_chunks (
+            version_id INTEGER NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            token_estimate INTEGER NOT NULL DEFAULT 0,
+            metadata_json TEXT,
+            PRIMARY KEY(version_id, chunk_index),
+            FOREIGN KEY(version_id) REFERENCES source_versions(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX idx_source_versions_source ON source_versions(source_id, id);
+        CREATE INDEX idx_import_stage_results_task ON import_stage_results(task_id, id);
+        """
+    )
+
+
 DEFAULT_MIGRATIONS = (
     Migration(1, "initial-schema", _apply_initial_schema),
     Migration(2, "persistent-text-import-queue", _add_persistent_import_queue),
+    Migration(3, "atomic-text-core-processing", _add_atomic_core_processing),
 )
 
 

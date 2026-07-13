@@ -14,6 +14,11 @@
         <span class="job-step">
           {% if job.step == 'queued' %}文件已接收，等待处理
           {% elif job.step == 'processing' %}正在处理文本内容
+          {% elif job.step == 'extract_text' %}正在提取文本内容
+          {% elif job.step == 'standard_document' %}正在生成标准知识文档
+          {% elif job.step == 'quality_validation' %}正在检查文档完整性
+          {% elif job.step == 'chunk_indexing' %}正在生成检索分块
+          {% elif job.step == 'promote_version' %}正在切换为当前可用版本
           {% elif job.step == 'completed' %}处理完成，可在知识库中使用
           {% elif job.step == 'failed' %}处理失败，需要检查
           {% else %}{{ job.step or '等待处理' }}{% endif %}

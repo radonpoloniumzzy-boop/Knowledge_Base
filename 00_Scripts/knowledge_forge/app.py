@@ -9,7 +9,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import services
-from .db import DATA_DIR, DB_PATH, connect
+from .core_processing import CoreTextProcessor
+from .db import DATA_DIR, DB_PATH
 from .ingestion import PersistentTextImportQueue
 
 
@@ -20,25 +21,14 @@ app = FastAPI(title="知识炼制台", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
 
-def process_text_upload(file_id: int) -> None:
-    services.process_upload(file_id)
-    with connect() as conn:
-        row = conn.execute(
-            """
-            SELECT status, error FROM jobs
-            WHERE file_id=? AND job_type IN ('ingest_upload', 'process_upload')
-            ORDER BY id DESC LIMIT 1
-            """,
-            (file_id,),
-        ).fetchone()
-    if row is not None and row["status"] == "failed":
-        raise RuntimeError(row["error"] or "Text import failed")
-
-
+core_text_processor = CoreTextProcessor(
+    DB_PATH,
+    Path(services.load_config()["paths"]["std_dir"]),
+)
 ingestion_queue = PersistentTextImportQueue(
     DB_PATH,
     services.ingest_upload,
-    process_text_upload,
+    core_text_processor.process,
 )
 
 
@@ -49,11 +39,18 @@ def import_job_view(task):
         "completed": 100,
         "needs_attention": 100,
     }.get(task.status, 0)
+    stage_progress = {
+        "extract_text": 15,
+        "standard_document": 35,
+        "quality_validation": 55,
+        "chunk_indexing": 75,
+        "promote_version": 90,
+    }
     return {
         **task.__dict__,
         "file_name": task.filename,
         "step": task.current_stage,
-        "progress": progress,
+        "progress": stage_progress.get(task.current_stage, progress),
     }
 
 

@@ -22,9 +22,9 @@ def test_new_database_records_current_schema_version(tmp_path):
         }
 
     assert report.from_version == 0
-    assert report.to_version == 2
-    assert version == 2
-    assert {"files", "jobs", "import_tasks", "worker_leases", "packs", "schema_migrations"} <= tables
+    assert report.to_version == 3
+    assert version == 3
+    assert {"files", "jobs", "import_tasks", "import_stage_results", "source_versions", "worker_leases", "packs", "schema_migrations"} <= tables
 
 
 def test_count_mismatch_keeps_live_database_and_backup(tmp_path):
@@ -45,7 +45,7 @@ def test_count_mismatch_keeps_live_database_and_backup(tmp_path):
     runner = MigrationRunner(
         database_path,
         managed_data_dir,
-        migrations=(Migration(3, "destructive", destructive_migration),),
+        migrations=(Migration(4, "destructive", destructive_migration),),
     )
 
     with pytest.raises(MigrationValidationError):
@@ -53,7 +53,7 @@ def test_count_mismatch_keeps_live_database_and_backup(tmp_path):
 
     with sqlite3.connect(database_path) as conn:
         assert conn.execute("SELECT COUNT(*) FROM files").fetchone()[0] == 1
-        assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 2
+        assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 3
     assert len(list((managed_data_dir / "Backups").glob("*.db"))) == 1
 
 
@@ -95,9 +95,9 @@ def test_existing_database_is_backed_up_preserved_and_migrated_once(tmp_path):
     assert first.backup_path is not None and first.backup_path.exists()
     assert first.before_counts["files"] == 1
     assert first.after_counts["files"] == 1
-    assert first.applied_versions == (1, 2)
+    assert first.applied_versions == (1, 2, 3)
     assert second.applied_versions == ()
     assert second.backup_path is None
     with sqlite3.connect(database_path) as conn:
         assert conn.execute("SELECT COUNT(*) FROM files").fetchone()[0] == 1
-        assert conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 3

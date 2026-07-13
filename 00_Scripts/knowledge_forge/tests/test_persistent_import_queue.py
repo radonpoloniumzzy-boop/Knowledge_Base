@@ -14,8 +14,8 @@ def make_queue(tmp_path, accepted, processed, **queue_options):
         accepted.append((filename, data))
         return len(accepted)
 
-    def process(file_id: int) -> None:
-        processed.append(file_id)
+    def process(task) -> None:
+        processed.append(task.file_id)
 
     return PersistentTextImportQueue(database_path, accept, process, **queue_options)
 
@@ -45,7 +45,7 @@ def test_only_one_queue_instance_can_own_and_process_work(tmp_path):
     processed = []
     first = make_queue(tmp_path, [], processed)
     first.submit_many([("one.txt", b"1"), ("two.txt", b"2")])
-    second = PersistentTextImportQueue(first.database_path, lambda *_: 3, processed.append)
+    second = PersistentTextImportQueue(first.database_path, lambda *_: 3, lambda task: processed.append(task.file_id))
 
     assert first.acquire_worker() is True
     assert second.acquire_worker() is False
@@ -71,7 +71,7 @@ def test_restart_recovers_interrupted_task_and_continues_from_queue(tmp_path):
     restarted = PersistentTextImportQueue(
         original.database_path,
         lambda *_: 7,
-        processed.append,
+        lambda task: processed.append(task.file_id),
     )
     assert restarted.acquire_worker() is True
     assert restarted.recover_interrupted() == 1

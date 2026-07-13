@@ -30,6 +30,8 @@ class ImportTask:
     updated_at: str
     started_at: str | None
     completed_at: str | None
+    source_id: int | None
+    version_id: int | None
 
 
 class PersistentTextImportQueue:
@@ -39,7 +41,7 @@ class PersistentTextImportQueue:
         self,
         database_path: Path,
         accept_upload: Callable[[str, bytes], int],
-        process_file: Callable[[int], None],
+        process_file: Callable[[ImportTask], None],
         *,
         poll_interval: float = 0.5,
         lease_seconds: float = 10.0,
@@ -164,7 +166,7 @@ class PersistentTextImportQueue:
         if task is None:
             return False
         try:
-            self._process_file(task.file_id)
+            self._process_file(task)
         except Exception as exc:
             with connect(self.database_path) as conn:
                 conn.execute(
