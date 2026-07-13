@@ -294,6 +294,32 @@ def _add_extraction_quality_metadata(conn: sqlite3.Connection) -> None:
     )
 
 
+def _add_nonblocking_enhancement_jobs(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE knowledge_enhancement_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            version_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'waiting',
+            message TEXT,
+            prompt_name TEXT,
+            prompt_version TEXT,
+            artifact_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT,
+            UNIQUE(version_id, kind),
+            FOREIGN KEY(version_id) REFERENCES source_versions(id) ON DELETE CASCADE,
+            FOREIGN KEY(artifact_id) REFERENCES artifacts(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX idx_enhancement_jobs_status
+            ON knowledge_enhancement_jobs(status, id);
+        """
+    )
+
+
 DEFAULT_MIGRATIONS = (
     Migration(1, "initial-schema", _apply_initial_schema),
     Migration(2, "persistent-text-import-queue", _add_persistent_import_queue),
@@ -301,6 +327,7 @@ DEFAULT_MIGRATIONS = (
     Migration(4, "retry-pause-and-actionable-errors", _add_retry_pause_and_errors),
     Migration(5, "content-identity-and-source-versions", _add_content_identity_and_versions),
     Migration(6, "document-extraction-and-quality-gates", _add_extraction_quality_metadata),
+    Migration(7, "nonblocking-knowledge-enhancement", _add_nonblocking_enhancement_jobs),
 )
 
 

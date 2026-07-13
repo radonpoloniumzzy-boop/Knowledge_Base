@@ -79,6 +79,7 @@ class PersistentTextImportQueue:
         lease_seconds: float = 10.0,
         retry_delays: tuple[float, ...] = RETRY_DELAYS,
         clock: Callable[[], float] = time.time,
+        completion_callback: Callable[[ImportTask], None] | None = None,
     ) -> None:
         self.database_path = Path(database_path)
         self._accept_upload = accept_upload
@@ -87,6 +88,7 @@ class PersistentTextImportQueue:
         self._lease_seconds = lease_seconds
         self._retry_delays = retry_delays
         self._clock = clock
+        self._completion_callback = completion_callback
         self._owner_id = uuid4().hex
         self._submit_lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -342,6 +344,11 @@ class PersistentTextImportQueue:
                     """,
                     (task.id,),
                 )
+            if self._completion_callback is not None:
+                try:
+                    self._completion_callback(self.get_task(task.id))
+                except Exception:
+                    pass
         return True
 
     def pause(self, task_id: int) -> ImportTask:

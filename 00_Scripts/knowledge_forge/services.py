@@ -376,11 +376,19 @@ def assign_tag(
         INSERT INTO tag_assignments(target_type, target_id, tag_id, scope, confidence, status, source, evidence)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(target_type, target_id, tag_id, scope) DO UPDATE SET
-            confidence = excluded.confidence,
+            confidence = CASE
+                WHEN tag_assignments.status LIKE 'user_%' OR tag_assignments.source='human'
+                THEN tag_assignments.confidence ELSE excluded.confidence END,
             status = CASE
                 WHEN tag_assignments.status LIKE 'user_%' THEN tag_assignments.status
                 ELSE excluded.status
             END,
+            source = CASE
+                WHEN tag_assignments.status LIKE 'user_%' OR tag_assignments.source='human'
+                THEN tag_assignments.source ELSE excluded.source END,
+            evidence = CASE
+                WHEN tag_assignments.status LIKE 'user_%' OR tag_assignments.source='human'
+                THEN tag_assignments.evidence ELSE excluded.evidence END,
             updated_at = CURRENT_TIMESTAMP
         """,
         (target_type, target_id, tag_id, scope, confidence, status, source, evidence),

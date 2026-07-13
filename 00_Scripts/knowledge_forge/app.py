@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from . import services
 from .core_processing import CoreTextProcessor
 from .db import DATA_DIR, DB_PATH
+from .enhancement import KnowledgeEnhancementQueue, OfflineEnhancementAdapter
 from .ingestion import PersistentTextImportQueue
 
 
@@ -22,6 +23,11 @@ app = FastAPI(title="知识炼制台", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
 
+enhancement_queue = KnowledgeEnhancementQueue(
+    DB_PATH,
+    services.ARTIFACT_DIR,
+    OfflineEnhancementAdapter(),
+)
 core_text_processor = CoreTextProcessor(
     DB_PATH,
     Path(services.load_config()["paths"]["std_dir"]),
@@ -30,6 +36,7 @@ ingestion_queue = PersistentTextImportQueue(
     DB_PATH,
     services.ingest_upload,
     core_text_processor.process,
+    completion_callback=enhancement_queue.enqueue_for_task,
 )
 
 
@@ -73,10 +80,12 @@ def import_job_view(task):
 def startup() -> None:
     services.seed_defaults()
     ingestion_queue.start()
+    enhancement_queue.start()
 
 
 @app.on_event("shutdown")
 def shutdown() -> None:
+    enhancement_queue.stop()
     ingestion_queue.stop()
 
 
@@ -178,6 +187,12 @@ def detail(request: Request, file_id: int):
     if not data:
         raise HTTPException(status_code=404, detail="File not found")
     data["version_history"] = ingestion_queue.version_history_for_file(file_id)
+    current = next((item for item in data["version_history"] if item["is_current"]), None)
+    data["enhancement_jobs"] = (
+        enhancement_queue.list_jobs(current["id"])
+        if current is not None and current.get("id") is not None
+        else []
+    )
     return templates.TemplateResponse(request, "file_detail.html", ctx(request, "library", **data))
 
 
@@ -189,7 +204,25 @@ def update_tag(file_id: int, tag: str = Form(...), action: str = Form("add")):
 
 @app.post("/files/{file_id}/regenerate")
 def regenerate_file(file_id: int):
-    services.regenerate_file_artifacts(file_id)
+    history = ingestion_queue.version_history_for_file(file_id)
+    current = next((item for item in history if item["is_current"]), None)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Current version not found")
+    for kind in ("structure", "sop", "insight"):
+        enhancement_queue.regenerate(current["id"], kind)
+    return RedirectResponse(f"/files/{file_id}", status_code=303)
+
+
+@app.post("/files/{file_id}/enhancements/{kind}/regenerate")
+def regenerate_enhancement(file_id: int, kind: str):
+    history = ingestion_queue.version_history_for_file(file_id)
+    current = next((item for item in history if item["is_current"]), None)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Current version not found")
+    try:
+        enhancement_queue.regenerate(current["id"], kind)
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=404, detail="Enhancement not found")
     return RedirectResponse(f"/files/{file_id}", status_code=303)
 
 

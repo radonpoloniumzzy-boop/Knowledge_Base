@@ -408,6 +408,20 @@ button, input { font: inherit; }
   color: #8a5a10;
 }
 .version-warnings span { margin-top: 3px; }
+.enhancement-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.enhancement-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: var(--panel-soft);
+}
+.enhancement-row strong,
+.enhancement-row span { display: block; }
+.enhancement-row span { color: var(--muted); font-size: 12px; margin-top: 2px; }
 
 .tag-list { display: grid; gap: 10px; margin-bottom: 14px; }
 .tag-row {

@@ -45,6 +45,18 @@ class FakeQueue:
         return self.version_history
 
 
+class FakeEnhancementQueue:
+    def __init__(self):
+        self.jobs = []
+        self.regenerated = []
+
+    def list_jobs(self, _version_id):
+        return self.jobs
+
+    def regenerate(self, version_id, kind):
+        self.regenerated.append((version_id, kind))
+
+
 def test_http_pause_and_resume_use_ingestion_queue_interface(monkeypatch):
     queue = FakeQueue()
     monkeypatch.setattr(app_module, "ingestion_queue", queue)
@@ -118,6 +130,7 @@ def test_file_detail_displays_nonblocking_quality_warning(monkeypatch):
         }
     ]
     monkeypatch.setattr(app_module, "ingestion_queue", queue)
+    monkeypatch.setattr(app_module, "enhancement_queue", FakeEnhancementQueue())
     monkeypatch.setattr(
         app_module.services,
         "file_detail",
@@ -146,3 +159,19 @@ def test_file_detail_displays_nonblocking_quality_warning(monkeypatch):
     assert "内容较短，请确认提取结果是否完整。" in response.text
     assert "XLSX" in response.text
     assert "7 字符" in response.text
+
+
+def test_targeted_enhancement_regeneration_only_resets_requested_kind(monkeypatch):
+    queue = FakeQueue()
+    queue.version_history = [{"id": 31, "is_current": True}]
+    enhancements = FakeEnhancementQueue()
+    monkeypatch.setattr(app_module, "ingestion_queue", queue)
+    monkeypatch.setattr(app_module, "enhancement_queue", enhancements)
+    client = TestClient(app_module.app)
+
+    response = client.post(
+        "/files/7/enhancements/insight/regenerate", follow_redirects=False
+    )
+
+    assert response.status_code == 303
+    assert enhancements.regenerated == [(31, "insight")]

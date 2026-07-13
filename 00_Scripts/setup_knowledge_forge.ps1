@@ -58,7 +58,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Step "Checking core code..."
-& $Python.Exe @($Python.Args + @("-m", "py_compile", "knowledge_forge.py", "knowledge_forge\app.py", "knowledge_forge\core_processing.py", "knowledge_forge\db.py", "knowledge_forge\extraction.py", "knowledge_forge\ingestion.py", "knowledge_forge\migrations.py", "knowledge_forge\services.py"))
+& $Python.Exe @($Python.Args + @("-m", "py_compile", "knowledge_forge.py", "knowledge_forge\app.py", "knowledge_forge\core_processing.py", "knowledge_forge\db.py", "knowledge_forge\enhancement.py", "knowledge_forge\extraction.py", "knowledge_forge\ingestion.py", "knowledge_forge\migrations.py", "knowledge_forge\services.py"))
 if ($LASTEXITCODE -ne 0) {
   throw "Code check failed."
 }

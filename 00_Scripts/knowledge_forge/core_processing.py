@@ -306,7 +306,7 @@ class CoreTextProcessor:
                 INSERT OR IGNORE INTO files(
                     source_path, library_type, title, filename, extension,
                     size_bytes, mtime, main_category, status, confidence
-                ) VALUES (?, 'standard', ?, ?, '.md', ?, ?, '00_Pending_Review', 'completed', 0.5)
+                ) VALUES (?, 'standard', ?, ?, '.md', ?, ?, '00_Unsorted', 'completed', 0.5)
                 """,
                 (str(path), path.stem, path.name, path.stat().st_size, path.stat().st_mtime),
             )
