@@ -1,0 +1,39 @@
+{
+  "api_settings": {
+    "api_key": "",
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-chat"
+  },
+  "paths": {
+    "raw_dir": "D:\\Knowledge_Base\\Raw_Ingestion",
+    "std_dir": "D:\\Knowledge_Base\\Standard_Library",
+    "sop_dir": "D:\\Knowledge_Base\\SOP_Production",
+    "insight_dir": "D:\\Knowledge_Base\\Insight_Library"
+  },
+  "taxonomy": {
+    "剪辑摄影": [
+      "文件管理与基础剪辑",
+      "设备操作与基础设置",
+      "曝光法则与光线控制",
+      "白平衡与色彩科学",
+      "特殊拍摄与运镜",
+      "实战布光与构图",
+      "音频录制与收音规范",
+      "多机位协同与精剪",
+      "蒙太奇逻辑与时钟理论",
+      "运动控制与关键帧",
+      "变速技巧与动态节奏",
+      "空间重组与全能抠像",
+      "平面跟踪与包装特效",
+      "声音设计与后期混音",
+      "一级调色与节点逻辑",
+      "二级调色与局部精修",
+      "输出规范与最终交付"
+    ]
+  },
+  "folder_mapping": {
+    "剪辑摄影": "09_Editing_Photography",
+    "__DEFAULT__": "00_Unsorted"
+  }
+}

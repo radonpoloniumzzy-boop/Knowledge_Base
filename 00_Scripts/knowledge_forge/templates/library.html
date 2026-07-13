@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}知识库 - 知识炼制台{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Library</p>
+    <h1>知识库</h1>
+    <p>按主分类、强标签、产物和状态筛选资料。</p>
+  </div>
+</section>
+
+<section class="domain-strip">
+  <a class="{{ 'active' if not category else '' }}" href="/library">全部</a>
+  {% for cat in categories[:12] %}
+  <a class="{{ 'active' if category == cat.name else '' }}" href="/library?category={{ cat.name | urlencode }}">{{ cat.label }} <span>{{ cat.count }}</span></a>
+  {% endfor %}
+</section>
+
+<section class="library-grid">
+  <div class="panel">
+    <div class="panel-head">
+      <h2>文件列表</h2>
+      <span>{{ files|length }} 条结果</span>
+    </div>
+    <form class="filter-bar rich-filter-bar" action="/library" method="get">
+      <input name="q" value="{{ q or '' }}" placeholder="标题、路径或标签">
+      <select name="category" data-category-filter>
+        <option value="">全部主分类</option>
+        {% for cat in categories %}
+        <option value="{{ cat.name }}" {% if category == cat.name %}selected{% endif %}>{{ cat.label }}（{{ cat.count }}）</option>
+        {% endfor %}
+      </select>
+      <select name="tag" data-tag-filter data-selected="{{ tag or '' }}">
+        <option value="">全部标签</option>
+      </select>
+      <select name="status">
+        <option value="">全部状态</option>
+        {% for s in ['completed', 'failed', 'needs_review', 'pending'] %}
+        <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <select name="artifact_type">
+        <option value="">全部产物</option>
+        {% for a in ['clean', 'structure', 'sop', 'insight'] %}
+        <option value="{{ a }}" {% if artifact_type == a %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn secondary" type="submit">筛选</button>
+    </form>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>文件</th>
+          <th>主分类</th>
+          <th>强标签</th>
+          <th>产物</th>
+          <th>状态</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for file in files %}
+        <tr class="{{ 'selected-row' if selected == file.id else '' }}">
+          <td>
+            <strong>{{ file.title }}</strong>
+            <span class="path">{{ file.filename }}</span>
+          </td>
+          <td>{{ file.main_category or '未分类' }}{% if file.sub_category %}<span class="path">{{ file.sub_category }}</span>{% endif %}</td>
+          <td class="tags">{{ file.tags or '待补充' }}</td>
+          <td>
+            <span class="pill">SOP {{ file.sop_count }}</span>
+            <span class="pill">Insight {{ file.insight_count }}</span>
+          </td>
+          <td><span class="badge {{ file.status }}">{{ file.status }}</span></td>
+          <td>
+            <a class="link" href="/library?selected={{ file.id }}{% if q %}&q={{ q | urlencode }}{% endif %}{% if category %}&category={{ category | urlencode }}{% endif %}{% if tag %}&tag={{ tag | urlencode }}{% endif %}{% if status %}&status={{ status | urlencode }}{% endif %}{% if artifact_type %}&artifact_type={{ artifact_type | urlencode }}{% endif %}">预览</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty">没有找到文件。可以先同步现有库，或放宽筛选条件。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <aside class="detail-drawer">
+    {% if selected_detail %}
+    <div class="panel-head">
+      <h2>详情</h2>
+      <a class="link" href="/files/{{ selected_detail.file.id }}">完整页</a>
+    </div>
+    <h3>{{ selected_detail.file.title }}</h3>
+    <p class="path">{{ selected_detail.file.source_path }}</p>
+    <div class="drawer-tags">
+      {% for item in selected_detail.tags[:8] %}
+      <span>{{ item.name }}</span>
+      {% endfor %}
+    </div>
+    <dl class="meta-list">
+      <dt>类型</dt><dd>{{ selected_detail.file.library_type }}</dd>
+      <dt>分类</dt><dd>{{ selected_detail.file.main_category or '未分类' }}</dd>
+      <dt>状态</dt><dd>{{ selected_detail.file.status }}</dd>
+    </dl>
+    <h4>产物</h4>
+    {% for item in selected_detail.artifacts[:5] %}
+    <div class="drawer-artifact">
+      <strong>{{ item.artifact.artifact_type }}</strong>
+      <span>{{ item.artifact.title }}</span>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty">点击文件行的“预览”，这里会显示右侧详情。</div>
+    {% endif %}
+  </aside>
+</section>
+
+<script>
+  window.KF_TAG_GROUPS = {{ tag_groups | tojson }};
+</script>
+<script>
+  (function () {
+    const categorySelect = document.querySelector("[data-category-filter]");
+    const tagSelect = document.querySelector("[data-tag-filter]");
+    if (!categorySelect || !tagSelect || !window.KF_TAG_GROUPS) return;
+
+    const groups = window.KF_TAG_GROUPS;
+    const allTags = [];
+    groups.forEach((group) => {
+      allTags.push({ value: group.value, label: `全部 ${group.label}`, count: group.count, top: group.value });
+      group.children.forEach((child) => allTags.push({ ...child, top: group.value }));
+    });
+
+    function addOption(value, label, count) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = count ? `${label}（${count}）` : label;
+      tagSelect.appendChild(option);
+    }
+
+    function rebuildTags(clearSelection) {
+      const selected = clearSelection ? "" : (tagSelect.dataset.selected || tagSelect.value || "");
+      const category = categorySelect.value;
+      tagSelect.innerHTML = "";
+      addOption("", category ? "全部标签" : "全部大类标签");
+
+      let options = [];
+      if (category) {
+        const group = groups.find((item) => item.value === category);
+        if (group) {
+          options = [
+            { value: group.value, label: `全部 ${group.label}`, count: group.count, top: group.value },
+            ...group.children.map((child) => ({ ...child, top: group.value })),
+          ];
+        }
+      } else {
+        options = groups.map((group) => ({
+          value: group.value,
+          label: `全部 ${group.label}`,
+          count: group.count,
+          top: group.value,
+        }));
+      }
+
+      options.forEach((item) => addOption(item.value, item.label, item.count));
+      if (selected && !options.some((item) => item.value === selected)) {
+        const found = allTags.find((item) => item.value === selected);
+        if (found) addOption(found.value, found.full_label || found.label, found.count);
+      }
+      tagSelect.value = selected;
+      tagSelect.dataset.selected = "";
+    }
+
+    categorySelect.addEventListener("change", () => rebuildTags(true));
+    rebuildTags(false);
+  })();
+</script>
+{% endblock %}

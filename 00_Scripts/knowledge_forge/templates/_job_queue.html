@@ -1,0 +1,42 @@
+<div class="job-summary">
+  <span><strong>{{ job_summary.waiting }}</strong> 排队</span>
+  <span><strong>{{ job_summary.processing }}</strong> 处理中</span>
+  <span><strong>{{ job_summary.completed }}</strong> 已完成</span>
+  <span><strong>{{ job_summary.needs_attention }}</strong> 需要处理</span>
+</div>
+
+<div class="job-list">
+  {% for job in jobs %}
+  <article class="job-item {{ job.status }}">
+    <div class="job-main">
+      <div>
+        <strong>{{ job.file_name or '系统任务' }}</strong>
+        <span class="job-step">
+          {% if job.step == 'queued' %}文件已接收，等待处理
+          {% elif job.step == 'processing' %}正在处理文本内容
+          {% elif job.step == 'completed' %}处理完成，可在知识库中使用
+          {% elif job.step == 'failed' %}处理失败，需要检查
+          {% else %}{{ job.step or '等待处理' }}{% endif %}
+        </span>
+      </div>
+      <span class="badge {{ job.status }}">
+        {% if job.status == 'waiting' %}排队中
+        {% elif job.status == 'processing' %}处理中
+        {% elif job.status == 'completed' %}已完成
+        {% elif job.status == 'needs_attention' %}需要处理
+        {% else %}{{ job.status }}{% endif %}
+      </span>
+    </div>
+    <div class="job-progress" aria-label="处理进度 {{ job.progress }}%">
+      <span style="width: {{ job.progress }}%"></span>
+    </div>
+    <div class="job-meta">
+      <span>{{ job.progress }}%</span>
+      <time>{{ job.updated_at }}</time>
+    </div>
+    {% if job.error %}<p class="job-error">{{ job.error }}</p>{% endif %}
+  </article>
+  {% else %}
+  <div class="empty">暂无导入任务。</div>
+  {% endfor %}
+</div>

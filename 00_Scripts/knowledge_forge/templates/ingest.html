@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}资料导入 - 知识炼制台{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Ingestion</p>
+    <h1>资料导入</h1>
+    <p>拖入或选择学习资料。第一版会转成清洗 Markdown 并进入“待归类”。</p>
+  </div>
+</section>
+
+<section class="upload-band">
+  <form class="upload-box" action="/ingest/upload" method="post" enctype="multipart/form-data">
+    <input id="files" type="file" name="files" multiple>
+    <label for="files">
+      <strong>选择或拖放资料</strong>
+      <span>支持 md、txt、pdf、doc、docx、ppt、xlsx 等；视频/音频转写入口后续接入。</span>
+    </label>
+    <button class="btn primary" type="submit">开始整理</button>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>工作进程</h2>
+    <span id="job-refresh-status">自动更新</span>
+  </div>
+  <div id="job-queue">
+    {% include "_job_queue.html" %}
+  </div>
+</section>
+
+<script>
+  (function () {
+    const queue = document.getElementById("job-queue");
+    const status = document.getElementById("job-refresh-status");
+    async function refreshJobs() {
+      try {
+        const response = await fetch("/ingest/jobs", { cache: "no-store" });
+        if (!response.ok) throw new Error("refresh failed");
+        queue.innerHTML = await response.text();
+        status.textContent = "刚刚更新";
+      } catch (error) {
+        status.textContent = "更新失败，正在重试";
+      }
+    }
+    window.setInterval(refreshJobs, 2000);
+  })();
+</script>
+{% endblock %}

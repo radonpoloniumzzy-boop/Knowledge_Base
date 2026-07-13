@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{{ file.title }} - 知识炼制台{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">File Detail</p>
+    <h1>{{ file.title }}</h1>
+    <p>{{ file.source_path }}</p>
+  </div>
+  <div class="head-actions">
+    <form action="/files/{{ file.id }}/regenerate" method="post">
+      <button class="btn primary" type="submit">重新生成离线草稿</button>
+    </form>
+    <a class="btn secondary" href="/library">返回知识库</a>
+  </div>
+</section>
+
+<section class="layout-two wide-right">
+  <div class="panel">
+    <div class="panel-head">
+      <h2>标签治理</h2>
+      <span>人工反馈优先于自动标签</span>
+    </div>
+    <div class="tag-list">
+      {% for tag in tags %}
+      <div class="tag-row">
+        <div>
+          <strong>{{ tag.name }}</strong>
+          <span>{{ tag.scope }} · {{ "%.2f"|format(tag.confidence) }} · {{ tag.status }}</span>
+        </div>
+        <form action="/files/{{ file.id }}/tags" method="post">
+          <input type="hidden" name="tag" value="{{ tag.name }}">
+          <button name="action" value="demote" class="btn tiny" type="submit">降级片段</button>
+          <button name="action" value="reject" class="btn tiny danger" type="submit">拒绝</button>
+        </form>
+      </div>
+      {% else %}
+      <div class="empty">暂无标签。</div>
+      {% endfor %}
+    </div>
+    <form class="inline-form" action="/files/{{ file.id }}/tags" method="post">
+      <input name="tag" placeholder="新增标签，例如 艺术/色彩">
+      <button class="btn primary" name="action" value="add" type="submit">添加标签</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>文件信息</h2>
+      <span>{{ file.library_type }}</span>
+    </div>
+    <dl class="meta-list">
+      <dt>文件名</dt><dd>{{ file.filename }}</dd>
+      <dt>主分类</dt><dd>{{ file.main_category or '未分类' }}</dd>
+      <dt>子分类</dt><dd>{{ file.sub_category or '-' }}</dd>
+      <dt>大小</dt><dd>{{ (file.size_bytes / 1024)|round(1) }} KB</dd>
+      <dt>状态</dt><dd>{{ file.status }}</dd>
+    </dl>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>产物预览</h2>
+    <span>清洗文本、SOP、Insight 等</span>
+  </div>
+  <div class="artifact-grid">
+    {% for item in artifacts %}
+    <article class="artifact">
+      <h3>{{ item.artifact.artifact_type }}</h3>
+      <p>{{ item.artifact.title }}</p>
+      <pre>{{ item.preview or '此产物不可直接预览。' }}</pre>
+    </article>
+    {% else %}
+    <div class="empty">没有关联产物。</div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>知识块</h2>
+    <span>v1 导出 JSONL 使用这些片段</span>
+  </div>
+  {% for chunk in chunks %}
+  <div class="chunk">
+    <strong>#{{ chunk.chunk_index }}</strong>
+    <p>{{ chunk.text[:420] }}{% if chunk.text|length > 420 %}...{% endif %}</p>
+  </div>
+  {% else %}
+  <div class="empty">暂无知识块。</div>
+  {% endfor %}
+</section>
+{% endblock %}

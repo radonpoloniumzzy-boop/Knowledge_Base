@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}能力包 - 知识炼制台{% endblock %}
+
+{% macro tag_picker(selected_tags, tag_groups) %}
+<div class="tag-picker" data-tag-picker>
+  <input type="hidden" name="include_tags" value="">
+  <div class="tag-picker-toolbar">
+    <span>选择标签范围</span>
+    <button class="mini-btn" type="button" data-action="clear-tags">清空</button>
+  </div>
+  <div class="tag-picker-layout">
+    <div class="tag-picker-tabs">
+      {% for group in tag_groups %}
+      <button class="tag-tab {{ 'active' if loop.first else '' }}" type="button" data-top="{{ group.value }}">
+        {{ group.label }} <em>{{ group.count }}</em>
+      </button>
+      {% endfor %}
+    </div>
+    <div class="tag-picker-panels">
+      {% for group in tag_groups %}
+      <div class="tag-panel {{ 'active' if loop.first else '' }}" data-panel="{{ group.value }}">
+        <label class="tag-option tag-option-root">
+          <input type="checkbox" name="selected_tags" value="{{ group.value }}" data-label="全部 {{ group.label }}" {% if group.value in selected_tags %}checked{% endif %}>
+          <span>
+            <strong>全部 {{ group.label }}</strong>
+            <em>选择整个大类，自动包含它下面的子标签</em>
+          </span>
+        </label>
+        {% for child in group.children %}
+        <label class="tag-option depth-{{ child.depth }}">
+          <input type="checkbox" name="selected_tags" value="{{ child.value }}" data-label="{{ child.full_label }}" {% if child.value in selected_tags %}checked{% endif %}>
+          <span>
+            <strong>{{ child.label }}</strong>
+            <em>{{ child.count }} 文件</em>
+          </span>
+        </label>
+        {% else %}
+        <div class="empty small">这个大类暂时还没有细分标签。</div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="tag-summary" data-selected-summary>未选择标签</div>
+</div>
+{% endmacro %}
+
+{% block content %}
+{% if error == "missing_name" %}
+<div class="notice error" role="alert">请输入能力包名称后再创建。</div>
+{% endif %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Packs</p>
+    <h1>能力包</h1>
+    <p>能力包是给不同 AI 职能使用的知识配方，不是固定文件夹。</p>
+  </div>
+</section>
+
+<section class="pack-grid">
+  {% for item in packs %}
+  <article class="pack-card">
+    <form class="pack-editor" action="/packs/{{ item.pack.id }}/save" method="post">
+      <div class="pack-head">
+        <input class="pack-name" name="name" value="{{ item.pack.name }}">
+        <span>{{ item.file_count }} 文件</span>
+      </div>
+      <textarea name="description" class="pack-description">{{ item.pack.description }}</textarea>
+      <label>标签配方</label>
+      {{ tag_picker(item.recipe.include_tags, tag_groups) }}
+      <label>最低置信度</label>
+      <input name="min_confidence" type="number" min="0" max="1" step="0.05" value="{{ item.recipe.min_confidence }}">
+      <div class="check-grid">
+        <label><input type="checkbox" name="include_sop" value="true" {% if item.pack.include_sop %}checked{% endif %}> SOP</label>
+        <label><input type="checkbox" name="include_insight" value="true" {% if item.pack.include_insight %}checked{% endif %}> Insight</label>
+        <label><input type="checkbox" name="include_source" value="true" {% if item.pack.include_source %}checked{% endif %}> 原文</label>
+      </div>
+      <button class="btn secondary" type="submit">保存配方</button>
+    </form>
+    <form action="/packs/{{ item.pack.id }}/export" method="post">
+      <label class="checkline"><input type="checkbox" name="include_low_confidence" value="true"> 包含低置信内容</label>
+      <button class="btn primary" type="submit">导出 ZIP + JSONL</button>
+    </form>
+    <form class="pack-delete-form" action="/packs/{{ item.pack.id }}/delete" method="post" onsubmit="return confirm('确定删除这个能力包吗？知识库文件不会被删除。');">
+      <button class="btn danger" type="submit">删除能力包</button>
+    </form>
+  </article>
+  {% endfor %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>新建能力包</h2>
+    <span>从大类或细分标签中勾选，不需要手打标签名</span>
+  </div>
+  <form class="new-pack-form" action="/packs/create" method="post">
+    <label for="new-pack-name">能力包名称</label>
+    <input id="new-pack-name" name="name" placeholder="例如：企业管理知识包" required autocomplete="off">
+    <input name="description" placeholder="这个能力包给什么 AI 使用">
+    {{ tag_picker([], tag_groups) }}
+    <input name="min_confidence" type="number" min="0" max="1" step="0.05" value="0.7">
+    <div class="check-grid">
+      <label><input type="checkbox" name="include_sop" value="true" checked> SOP</label>
+      <label><input type="checkbox" name="include_insight" value="true" checked> Insight</label>
+      <label><input type="checkbox" name="include_source" value="true"> 原文</label>
+    </div>
+    <button class="btn primary" type="submit">创建能力包</button>
+  </form>
+</section>
+
+<script>
+  (function () {
+    document.querySelectorAll("[data-tag-picker]").forEach((picker) => {
+      const tabs = Array.from(picker.querySelectorAll(".tag-tab"));
+      const panels = Array.from(picker.querySelectorAll(".tag-panel"));
+      const summary = picker.querySelector("[data-selected-summary]");
+      const clear = picker.querySelector("[data-action='clear-tags']");
+      const checks = Array.from(picker.querySelectorAll("input[name='selected_tags']"));
+
+      function activate(top) {
+        tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.top === top));
+        panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === top));
+      }
+
+      function updateSummary() {
+        const selected = checks.filter((item) => item.checked).map((item) => item.dataset.label || item.value);
+        if (!selected.length) {
+          summary.textContent = "未选择标签";
+          return;
+        }
+        const preview = selected.slice(0, 4).join("、");
+        summary.textContent = selected.length > 4 ? `${preview} 等 ${selected.length} 个标签` : preview;
+      }
+
+      tabs.forEach((tab) => tab.addEventListener("click", () => activate(tab.dataset.top)));
+      checks.forEach((check) => check.addEventListener("change", updateSummary));
+      if (clear) {
+        clear.addEventListener("click", () => {
+          checks.forEach((check) => { check.checked = false; });
+          updateSummary();
+        });
+      }
+      updateSummary();
+    });
+  })();
+</script>
+{% endblock %}

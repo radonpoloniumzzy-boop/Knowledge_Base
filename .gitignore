@@ -1,0 +1,48 @@
+# Knowledge content and generated libraries stay local.
+/Raw_Ingestion/
+/Standard_Library/
+/SOP_Production/
+/Insight_Library/
+/Skill_Learning/
+
+# Runtime data is not source code.
+/Knowledge_Forge/
+/00_Scripts/dashboard.html
+
+# Python environments and caches.
+**/.venv/
+**/venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets and machine-local configuration.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Databases, backups, logs, and temporary files.
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+*.tmp
+*.bak
+Migration_Work/
+Backups/
+Uploads/
+last_url.txt
+*.pid
+
+# Editor and operating-system state.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini

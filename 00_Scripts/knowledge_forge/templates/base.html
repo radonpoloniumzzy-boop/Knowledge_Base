@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}知识炼制台{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">KF</div>
+      <div>
+        <strong>知识炼制台</strong>
+        <span>Knowledge Forge</span>
+      </div>
+    </div>
+    <nav class="nav">
+      <a class="{{ 'active' if active == 'dashboard' else '' }}" href="/">仪表盘</a>
+      <a class="{{ 'active' if active == 'ingest' else '' }}" href="/ingest">资料导入</a>
+      <a class="{{ 'active' if active == 'library' else '' }}" href="/library">知识库</a>
+      <a class="{{ 'active' if active == 'packs' else '' }}" href="/packs">能力包</a>
+      <a class="{{ 'active' if active == 'settings' else '' }}" href="/settings">设置</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="status-dot"></div>
+      <span>本地离线优先</span>
+    </div>
+  </aside>
+
+  <main class="shell">
+    <header class="topbar">
+      <form class="search" action="/library" method="get">
+        <span></span>
+        <input name="q" value="{{ q or '' }}" placeholder="搜索文件、标签、来源路径">
+      </form>
+      <form action="/scan" method="post">
+        <button class="btn secondary" type="submit">同步现有库</button>
+      </form>
+      <a class="btn primary" href="/ingest">导入资料</a>
+    </header>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
+
