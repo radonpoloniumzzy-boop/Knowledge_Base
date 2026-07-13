@@ -68,10 +68,16 @@ def _active_file_clause(alias: str = "f") -> str:
         NOT EXISTS (
             SELECT 1
             FROM knowledge_sources hidden_source
-            LEFT JOIN source_versions hidden_version
-              ON hidden_version.source_id=hidden_source.id
-            WHERE (hidden_source.source_file_id={alias}.id
-                   OR hidden_version.upload_file_id={alias}.id
+            WHERE hidden_source.source_file_id={alias}.id
+              AND (hidden_source.deleted_at IS NOT NULL
+                   OR hidden_source.recycle_requested_at IS NOT NULL)
+        )
+        AND NOT EXISTS (
+            SELECT 1
+            FROM source_versions hidden_version
+            JOIN knowledge_sources hidden_source
+              ON hidden_source.id=hidden_version.source_id
+            WHERE (hidden_version.upload_file_id={alias}.id
                    OR hidden_version.standard_file_id={alias}.id)
               AND (hidden_source.deleted_at IS NOT NULL
                    OR hidden_source.recycle_requested_at IS NOT NULL)
@@ -1222,7 +1228,15 @@ def settings_data() -> dict[str, Any]:
             """
         ).fetchall()
         settings = conn.execute("SELECT * FROM settings ORDER BY key").fetchall()
-    return {"prompts": prompts, "tags": tags, "settings": settings}
+        migration_runs = conn.execute(
+            "SELECT * FROM legacy_migration_runs ORDER BY id DESC LIMIT 5"
+        ).fetchall()
+    return {
+        "prompts": prompts,
+        "tags": tags,
+        "settings": settings,
+        "migration_runs": migration_runs,
+    }
 
 
 def create_prompt_version(name: str, content: str) -> str:

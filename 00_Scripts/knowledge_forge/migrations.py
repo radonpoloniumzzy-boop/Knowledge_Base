@@ -333,6 +333,43 @@ def _add_knowledge_recycle_bin(conn: sqlite3.Connection) -> None:
     )
 
 
+def _add_legacy_knowledge_migration_tracking(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE legacy_migration_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            status TEXT NOT NULL,
+            backup_path TEXT,
+            report_path TEXT,
+            before_counts_json TEXT NOT NULL,
+            after_counts_json TEXT,
+            created_sources INTEGER NOT NULL DEFAULT 0,
+            created_versions INTEGER NOT NULL DEFAULT 0,
+            ambiguity_count INTEGER NOT NULL DEFAULT 0,
+            started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT
+        );
+
+        CREATE TABLE legacy_migration_ambiguities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            record_type TEXT NOT NULL,
+            record_id INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(run_id) REFERENCES legacy_migration_runs(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX idx_legacy_migration_ambiguities_run
+            ON legacy_migration_ambiguities(run_id, record_type, record_id);
+        CREATE INDEX IF NOT EXISTS idx_source_versions_standard_file
+            ON source_versions(standard_file_id);
+        CREATE INDEX IF NOT EXISTS idx_source_versions_upload_file
+            ON source_versions(upload_file_id);
+        """
+    )
+
+
 DEFAULT_MIGRATIONS = (
     Migration(1, "initial-schema", _apply_initial_schema),
     Migration(2, "persistent-text-import-queue", _add_persistent_import_queue),
@@ -342,6 +379,7 @@ DEFAULT_MIGRATIONS = (
     Migration(6, "document-extraction-and-quality-gates", _add_extraction_quality_metadata),
     Migration(7, "nonblocking-knowledge-enhancement", _add_nonblocking_enhancement_jobs),
     Migration(8, "knowledge-recycle-bin", _add_knowledge_recycle_bin),
+    Migration(9, "legacy-knowledge-migration-tracking", _add_legacy_knowledge_migration_tracking),
 )
 
 

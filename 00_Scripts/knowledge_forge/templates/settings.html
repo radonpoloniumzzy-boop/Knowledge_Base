@@ -53,6 +53,25 @@
   </div>
 </section>
 
+{% if migration_runs %}
+<section class="panel">
+  <div class="panel-head"><h2>旧资料迁移记录</h2><span>最近 5 次</span></div>
+  <table class="data-table compact">
+    <thead><tr><th>时间</th><th>新增资料</th><th>歧义</th><th>报告</th></tr></thead>
+    <tbody>
+    {% for run in migration_runs %}
+    <tr>
+      <td>{{ run.completed_at or run.started_at }}</td>
+      <td>{{ run.created_sources }}</td>
+      <td>{{ run.ambiguity_count }}</td>
+      <td class="path">{{ run.report_path }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
 <section class="panel">
   <div class="panel-head"><h2>提示词模板</h2><span>保存会创建新版本，旧产物不静默覆盖</span></div>
   <div class="prompt-grid">
