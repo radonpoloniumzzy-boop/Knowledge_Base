@@ -403,6 +403,8 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
 .pack-delivery form { display: grid; gap: 6px; }
 .adventure-empty { display: grid; place-items: center; min-height: 300px; margin-bottom: 14px; border: 1px dashed var(--kf-line-strong); color: var(--kf-ink-soft); text-align: center; }.adventure-empty .guild-icon { width: 58px; height: 58px; color: var(--kf-pack-brass); }
 .create-pack-panel { scroll-margin-top: 82px; }
+.create-pack-panel .new-pack-form { display: grid; grid-template-columns: 1fr; gap: 14px; }
+.loadout-options .btn { min-width: 132px; white-space: nowrap; }
 
 .prompt-editor, .tag-row, .enhancement-row, .version-row, .artifact { border-color: var(--kf-line); border-radius: var(--kf-radius); background: var(--kf-surface-subtle); }
 .prompt-title span, .history summary { color: var(--kf-primary); }
@@ -427,6 +429,9 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
 
 @media (max-width: 760px) {
   body { font-size: 16px; }
+  .btn, .search input, .constellation-active-link, .constellation-collapse,
+  .pack-fields input, .archetype-select select, .loadout-options input,
+  .tag-tab, .mini-btn { min-height: 44px; }
   .sidebar { position: static; width: 100%; min-height: auto; padding: 12px; }
   .brand { margin: 0 0 10px; }
   .brand span, .sidebar-footer { display: none; }
@@ -465,6 +470,7 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
   .constellation-active-link, .constellation-collapse { width: calc(50% - 4px); display: inline-flex; vertical-align: top; }
   .constellation-map { min-height: 390px; }
   .root-star { width: 92px; }
+  .child-star { min-height: 44px; }
   .constellation-root[data-root-index="0"] { --root-x: 18%; --root-y: 18%; }
   .constellation-root[data-root-index="1"] { --root-x: 50%; --root-y: 12%; }
   .constellation-root[data-root-index="2"] { --root-x: 82%; --root-y: 22%; }
@@ -485,6 +491,7 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
   .inventory-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pack-fields, .identity-fields, .loadout-options, .pack-delivery { grid-template-columns: 1fr; }
   .emblem-palette label { grid-template-columns: 28px; }
+  .emblem-palette label { min-width: 44px; min-height: 44px; place-content: center; }
   .emblem-palette em { display: none; }
   .pack-delivery .btn { width: 100%; }
 }
