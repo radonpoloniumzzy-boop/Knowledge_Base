@@ -400,26 +400,95 @@ def download(path: str):
 
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings(request: Request):
-    return templates.TemplateResponse(request, "settings.html", ctx(request, "settings", **services.settings_data()))
+def settings(request: Request, section: str = "model", tag_q: str = "", tag_usage: str = "all"):
+    allowed = {"model", "domains", "tags", "prompts", "system"}
+    section = section if section in allowed else "model"
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        ctx(
+            request,
+            "settings",
+            section=section,
+            tag_q=tag_q,
+            tag_usage=tag_usage,
+            **services.settings_data(tag_q, tag_usage),
+        ),
+    )
 
 
 @app.post("/settings/prompts")
 def save_prompt(name: str = Form(...), content: str = Form(...)):
     services.create_prompt_version(name, content)
-    return RedirectResponse("/settings", status_code=303)
+    return RedirectResponse("/settings?section=prompts", status_code=303)
+
+
+@app.post("/settings/prompts/{prompt_id}/restore")
+def restore_prompt(prompt_id: int):
+    try:
+        services.restore_prompt_version(prompt_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Prompt version not found")
+    return RedirectResponse("/settings?section=prompts", status_code=303)
+
+
+@app.post("/settings/model")
+def save_model_settings(
+    active_provider: str = Form(""),
+    api_base_url: str = Form(""),
+    model_name: str = Form(""),
+    api_key_env: str = Form(""),
+    offline_mode: bool = Form(False),
+):
+    values = {
+        "active_provider": active_provider,
+        "api_base_url": api_base_url,
+        "model_name": model_name,
+        "api_key_env": api_key_env,
+        "offline_mode": "true" if offline_mode else "false",
+    }
+    for key, value in values.items():
+        services.update_setting(key, value)
+    return RedirectResponse("/settings?section=model", status_code=303)
+
+
+@app.post("/settings/domains/save")
+def save_domain(
+    domain_id: int = Form(0),
+    name: str = Form(...),
+    accent_key: str = Form("forest"),
+    main_categories: list[str] = Form([]),
+    tag_prefixes: list[str] = Form([]),
+):
+    saved_id = services.save_knowledge_domain(
+        domain_id or None, name, accent_key, main_categories, tag_prefixes
+    )
+    return RedirectResponse(f"/settings?section=domains#domain-{saved_id}", status_code=303)
+
+
+@app.post("/settings/domains/{domain_id}/action")
+def change_domain(domain_id: int, action: str = Form(...)):
+    if action == "enable":
+        services.set_knowledge_domain_enabled(domain_id, True)
+    elif action == "disable":
+        services.set_knowledge_domain_enabled(domain_id, False)
+    elif action in {"up", "down"}:
+        services.move_knowledge_domain(domain_id, action)
+    elif action == "delete":
+        services.delete_knowledge_domain(domain_id)
+    return RedirectResponse("/settings?section=domains", status_code=303)
 
 
 @app.post("/settings/values")
 def save_setting(key: str = Form(...), value: str = Form("")):
     services.update_setting(key, value)
-    return RedirectResponse("/settings", status_code=303)
+    return RedirectResponse("/settings?section=model", status_code=303)
 
 
 @app.post("/settings/tags")
 def save_tag(name: str = Form(...), description: str = Form("")):
     services.create_or_update_tag(name, description)
-    return RedirectResponse("/settings", status_code=303)
+    return RedirectResponse("/settings?section=tags", status_code=303)
 
 
 @app.post("/settings/tags/{tag_id}")
@@ -428,7 +497,7 @@ def edit_tag(tag_id: int, name: str = Form(...), description: str = Form(""), ac
         services.delete_unused_tag(tag_id)
     else:
         services.rename_tag(tag_id, name, description)
-    return RedirectResponse("/settings", status_code=303)
+    return RedirectResponse("/settings?section=tags", status_code=303)
 
 
 @app.get("/api/files")

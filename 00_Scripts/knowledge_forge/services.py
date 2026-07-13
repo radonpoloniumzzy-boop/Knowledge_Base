@@ -1495,10 +1495,22 @@ def export_pack(pack_id: int, export_format: str = "zip", include_low_confidence
         return out_dir
 
 
-def settings_data() -> dict[str, Any]:
+DOMAIN_ACCENTS = {"forest", "wine", "brass", "blue", "plum"}
+
+
+def settings_data(tag_q: str = "", tag_usage: str = "all") -> dict[str, Any]:
     with connect() as conn:
         prompts = conn.execute("SELECT * FROM prompts ORDER BY name, version").fetchall()
         active = _active_file_clause("usage_file")
+        tag_filters = []
+        tag_params: list[Any] = []
+        if tag_q.strip():
+            tag_filters.append("t.name LIKE ?")
+            tag_params.append(f"%{tag_q.strip()}%")
+        if tag_usage == "used":
+            tag_filters.append("EXISTS (SELECT 1 FROM tag_assignments used_ta WHERE used_ta.tag_id=t.id)")
+        elif tag_usage == "unused":
+            tag_filters.append("NOT EXISTS (SELECT 1 FROM tag_assignments used_ta WHERE used_ta.tag_id=t.id)")
         tags = conn.execute(
             f"""
             SELECT t.*, (
@@ -1507,20 +1519,109 @@ def settings_data() -> dict[str, Any]:
                 WHERE ta.tag_id=t.id AND {active}
             ) AS usage_count
             FROM tags t
+            {('WHERE ' + ' AND '.join(tag_filters)) if tag_filters else ''}
             ORDER BY usage_count DESC, name
             LIMIT 120
-            """
+            """,
+            tag_params,
         ).fetchall()
         settings = conn.execute("SELECT * FROM settings ORDER BY key").fetchall()
+        main_categories = [
+            row["main_category"] for row in conn.execute(
+                "SELECT DISTINCT main_category FROM files WHERE main_category IS NOT NULL AND main_category<>'' ORDER BY main_category"
+            )
+        ]
+        tag_roots = [
+            row["root"] for row in conn.execute(
+                "SELECT DISTINCT CASE WHEN instr(name, '/')>0 THEN substr(name, 1, instr(name, '/')-1) ELSE name END AS root FROM tags ORDER BY root"
+            )
+        ]
         migration_runs = conn.execute(
             "SELECT * FROM legacy_migration_runs ORDER BY id DESC LIMIT 5"
         ).fetchall()
+    setting_values = {row["key"]: row["value"] for row in settings}
+    domains = [
+        {
+            **dict(item["domain"]),
+            "count": item["count"],
+            "rules": [dict(rule) for rule in item["rules"]],
+        }
+        for item in list_knowledge_domains(enabled_only=False)
+    ]
     return {
         "prompts": prompts,
         "tags": tags,
         "settings": settings,
+        "setting_values": setting_values,
+        "domains": domains,
+        "main_categories": main_categories,
+        "tag_roots": tag_roots,
+        "domain_accents": sorted(DOMAIN_ACCENTS),
         "migration_runs": migration_runs,
     }
+
+
+def save_knowledge_domain(
+    domain_id: int | None,
+    name: str,
+    accent_key: str,
+    main_categories: list[str],
+    tag_prefixes: list[str],
+) -> int:
+    name = name.strip()
+    if not name:
+        raise ValueError("知识域名称不能为空")
+    accent = accent_key if accent_key in DOMAIN_ACCENTS else "forest"
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if domain_id is None:
+            order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM knowledge_domains").fetchone()[0]
+            domain_id = int(conn.execute(
+                "INSERT INTO knowledge_domains(name, accent_key, sort_order) VALUES (?, ?, ?)",
+                (name, accent, order),
+            ).lastrowid)
+        else:
+            conn.execute(
+                "UPDATE knowledge_domains SET name=?, accent_key=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (name, accent, domain_id),
+            )
+            conn.execute("DELETE FROM knowledge_domain_rules WHERE domain_id=?", (domain_id,))
+        for rule_type, values in (("main_category", main_categories), ("tag_prefix", tag_prefixes)):
+            for value in dict.fromkeys(item.strip() for item in values if item.strip()):
+                conn.execute(
+                    "INSERT OR IGNORE INTO knowledge_domain_rules(domain_id, rule_type, match_value) VALUES (?, ?, ?)",
+                    (domain_id, rule_type, value),
+                )
+    return int(domain_id)
+
+
+def set_knowledge_domain_enabled(domain_id: int, enabled: bool) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE knowledge_domains SET enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (int(enabled), domain_id),
+        )
+
+
+def move_knowledge_domain(domain_id: int, direction: str) -> None:
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        current = conn.execute("SELECT id, sort_order FROM knowledge_domains WHERE id=?", (domain_id,)).fetchone()
+        if current is None:
+            raise KeyError(domain_id)
+        operator, order = ("<", "DESC") if direction == "up" else (">", "ASC")
+        neighbor = conn.execute(
+            f"SELECT id, sort_order FROM knowledge_domains WHERE sort_order {operator} ? ORDER BY sort_order {order}, id {order} LIMIT 1",
+            (current["sort_order"],),
+        ).fetchone()
+        if neighbor:
+            conn.execute("UPDATE knowledge_domains SET sort_order=? WHERE id=?", (neighbor["sort_order"], current["id"]))
+            conn.execute("UPDATE knowledge_domains SET sort_order=? WHERE id=?", (current["sort_order"], neighbor["id"]))
+
+
+def delete_knowledge_domain(domain_id: int) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM knowledge_domains WHERE id=?", (domain_id,))
 
 
 def create_prompt_version(name: str, content: str) -> str:
@@ -1542,6 +1643,14 @@ def create_prompt_version(name: str, content: str) -> str:
             (name, version, content),
         )
         return version
+
+
+def restore_prompt_version(prompt_id: int) -> str:
+    with connect() as conn:
+        prompt = conn.execute("SELECT name, content FROM prompts WHERE id=?", (prompt_id,)).fetchone()
+    if prompt is None:
+        raise KeyError(prompt_id)
+    return create_prompt_version(prompt["name"], prompt["content"])
 
 
 def update_setting(key: str, value: str) -> None:

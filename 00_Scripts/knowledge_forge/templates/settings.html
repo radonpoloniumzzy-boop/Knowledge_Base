@@ -1,107 +1,70 @@
 {% extends "base.html" %}
 {% block title %}设置 - 知识炼制台{% endblock %}
 {% block content %}
-<section class="page-head">
-  <div>
-    <p class="eyebrow">Settings</p>
-    <h1>设置</h1>
-    <p>管理模型配置、提示词版本和标签体系。</p>
-  </div>
+<section class="page-head guild-board-head">
+  <div><p class="eyebrow">Guild Operations</p><h1>公会任务看板</h1><p>管理模型、知识域、标签与炼制规则。每类事务各归其位，不在此保存 API 密钥。</p></div>
 </section>
-
-<section class="layout-two">
-  <div class="panel">
-    <div class="panel-head"><h2>模型与系统配置</h2><span>离线优先</span></div>
-    <div class="table-scroll"><table class="data-table compact">
-      <tbody>
-      {% for row in settings %}
-      <tr>
-        <td>{{ row.key }}</td>
-        <td>
-          <form class="setting-form" action="/settings/values" method="post">
-            <input type="hidden" name="key" value="{{ row.key }}">
-            <input name="value" value="{{ row.value }}">
-            <button class="btn tiny" type="submit">保存</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-      </tbody>
-    </table></div>
-    <p class="hint">密钥不在页面保存。请把 API key 放入环境变量，例如 `DEEPSEEK_API_KEY`。</p>
-  </div>
-  <div class="panel">
-    <div class="panel-head"><h2>标签树</h2><span>前 120 个，可新增和重命名</span></div>
-    <form class="tag-create" action="/settings/tags" method="post">
-      <input name="name" placeholder="新增标签，例如 艺术/色彩">
-      <input name="description" placeholder="说明，可选">
-      <button class="btn tiny" type="submit">新增</button>
+<div class="settings-board" data-settings-section="{{ section }}">
+  <nav class="settings-nav" aria-label="设置分类">
+    <a class="{% if section == 'model' %}active{% endif %}" href="/settings?section=model"><span>01</span>模型配置</a>
+    <a class="{% if section == 'domains' %}active{% endif %}" href="/settings?section=domains"><span>02</span>知识域</a>
+    <a class="{% if section == 'tags' %}active{% endif %}" href="/settings?section=tags"><span>03</span>标签治理</a>
+    <a class="{% if section == 'prompts' %}active{% endif %}" href="/settings?section=prompts"><span>04</span>提示词</a>
+    <a class="{% if section == 'system' %}active{% endif %}" href="/settings?section=system"><span>05</span>系统与迁移</a>
+  </nav>
+  <section class="settings-task">
+  {% if section == 'model' %}
+    <div class="task-heading"><p class="eyebrow">Model Dispatch</p><h2>模型配置</h2><span>密钥只从环境变量读取</span></div>
+    <form class="model-fields" action="/settings/model" method="post">
+      <label>供应商<input name="active_provider" value="{{ setting_values.get('active_provider', '') }}"></label>
+      <label>API 地址<input type="url" name="api_base_url" value="{{ setting_values.get('api_base_url', '') }}"></label>
+      <label>模型名<input name="model_name" value="{{ setting_values.get('model_name', '') }}"></label>
+      <label>密钥环境变量名<input name="api_key_env" value="{{ setting_values.get('api_key_env', '') }}" placeholder="DEEPSEEK_API_KEY"></label>
+      <label class="switch-row"><input type="checkbox" name="offline_mode"{% if setting_values.get('offline_mode') == 'true' %} checked{% endif %}><span>离线模式</span><small>启用时不调用远程模型</small></label>
+      <button class="btn primary" type="submit">保存模型配置</button>
     </form>
-    <div class="tag-edit-list">
-      {% for tag in tags %}
-      <form class="tag-edit" action="/settings/tags/{{ tag.id }}" method="post">
-        <input name="name" value="{{ tag.name }}">
-        <input name="description" value="{{ tag.description or '' }}" placeholder="说明">
-        <span>{{ tag.usage_count }}</span>
-        <button class="btn tiny" name="action" value="save" type="submit">保存</button>
-        {% if tag.usage_count == 0 %}
-        <button class="btn tiny danger" name="action" value="delete" type="submit">删除</button>
-        {% endif %}
-      </form>
-      {% endfor %}
-    </div>
-  </div>
-</section>
-
-{% if migration_runs %}
-<section class="panel">
-  <div class="panel-head"><h2>旧资料迁移记录</h2><span>最近 5 次</span></div>
-  <div class="table-scroll"><table class="data-table compact">
-    <thead><tr><th>时间</th><th>新增资料</th><th>歧义</th><th>报告</th></tr></thead>
-    <tbody>
-    {% for run in migration_runs %}
-    <tr>
-      <td>{{ run.completed_at or run.started_at }}</td>
-      <td>{{ run.created_sources }}</td>
-      <td>{{ run.ambiguity_count }}</td>
-      <td class="path">{{ run.report_path }}</td>
-    </tr>
+  {% elif section == 'domains' %}
+    <div class="task-heading"><p class="eyebrow">Archive Shelves</p><h2>知识域</h2><span>仅影响书架导航，不删除知识资料</span></div>
+    <details class="domain-editor new-domain"><summary>新增知识域</summary>{{ domain_form(None, main_categories, tag_roots, domain_accents) }}</details>
+    <div class="domain-admin-list">
+    {% for domain in domains %}
+      <details id="domain-{{ domain.id }}" class="domain-editor"{% if not domain.enabled %} data-disabled="true"{% endif %}>
+        <summary><i data-accent="{{ domain.accent_key }}"></i><strong>{{ domain.name }}</strong><span>{{ domain.rules|length }} 条规则 · {{ '启用' if domain.enabled else '停用' }}</span></summary>
+        {{ domain_form(domain, main_categories, tag_roots, domain_accents) }}
+        <form class="domain-actions" action="/settings/domains/{{ domain.id }}/action" method="post">
+          <button class="icon-action" name="action" value="up" title="上移" aria-label="上移">↑</button><button class="icon-action" name="action" value="down" title="下移" aria-label="下移">↓</button>
+          <button class="btn tiny" name="action" value="{{ 'disable' if domain.enabled else 'enable' }}">{{ '停用' if domain.enabled else '启用' }}</button>
+          <button class="btn tiny danger" name="action" value="delete" onclick="return confirm('只删除知识域导航配置，确定继续？')">删除知识域</button>
+        </form>
+      </details>
     {% endfor %}
-    </tbody>
-  </table></div>
-</section>
-{% endif %}
-
-<section class="panel">
-  <div class="panel-head"><h2>提示词模板</h2><span>保存会创建新版本，旧产物不静默覆盖</span></div>
-  <div class="prompt-grid">
-  {% for prompt in prompts if prompt.active %}
-    <form class="prompt-editor" action="/settings/prompts" method="post">
-      <div class="prompt-title">
-        <strong>{{ prompt.name }}</strong>
-        <span>{{ prompt.version }}</span>
-      </div>
-      <input type="hidden" name="name" value="{{ prompt.name }}">
-      <textarea name="content">{{ prompt.content }}</textarea>
-      <button class="btn secondary" type="submit">保存为新版本</button>
-    </form>
-  {% endfor %}
-  </div>
-  <details class="history">
-    <summary>查看历史版本</summary>
-    <div class="table-scroll"><table class="data-table">
-      <thead><tr><th>名称</th><th>版本</th><th>内容</th><th>状态</th></tr></thead>
-      <tbody>
-      {% for prompt in prompts %}
-      <tr>
-        <td>{{ prompt.name }}</td>
-        <td>{{ prompt.version }}</td>
-        <td class="muted">{{ prompt.content }}</td>
-        <td>{{ 'active' if prompt.active else 'inactive' }}</td>
-      </tr>
-      {% endfor %}
-      </tbody>
-    </table></div>
-  </details>
-</section>
+    </div>
+  {% elif section == 'tags' %}
+    <div class="task-heading"><p class="eyebrow">Tag Governance</p><h2>标签治理</h2><span>仍有资料引用的标签不可删除</span></div>
+    <form class="tag-filters" method="get"><input type="hidden" name="section" value="tags"><input name="tag_q" value="{{ tag_q }}" placeholder="搜索标签"><select name="tag_usage"><option value="all">全部</option><option value="used"{% if tag_usage=='used' %} selected{% endif %}>已使用</option><option value="unused"{% if tag_usage=='unused' %} selected{% endif %}>未使用</option></select><button class="btn secondary">筛选</button></form>
+    <form class="tag-create" action="/settings/tags" method="post"><input name="name" placeholder="新增标签，例如：艺术/色彩"><input name="description" placeholder="说明（可选）"><button class="btn tiny" type="submit">新增</button></form>
+    <div class="tag-edit-list">{% for tag in tags %}<form class="tag-edit" action="/settings/tags/{{ tag.id }}" method="post"><input name="name" value="{{ tag.name }}"><input name="description" value="{{ tag.description or '' }}" placeholder="说明"><span>{{ tag.usage_count }} 次</span><button class="btn tiny" name="action" value="save">保存</button>{% if tag.usage_count == 0 %}<button class="btn tiny danger" name="action" value="delete">删除</button>{% endif %}</form>{% else %}<div class="empty">没有符合条件的标签。</div>{% endfor %}</div>
+  {% elif section == 'prompts' %}
+    <div class="task-heading"><p class="eyebrow">Refining Instructions</p><h2>提示词</h2><span>每次保存或恢复都会创建新版本</span></div>
+    <div class="prompt-grid">{% for prompt in prompts if prompt.active %}<form class="prompt-editor" action="/settings/prompts" method="post"><div class="prompt-title"><strong>{{ prompt.name }}</strong><span>{{ prompt.version }}</span></div><input type="hidden" name="name" value="{{ prompt.name }}"><textarea name="content">{{ prompt.content }}</textarea><button class="btn secondary">保存为新版本</button></form>{% endfor %}</div>
+    <div class="prompt-history"><h3>历史版本</h3>{% for prompt in prompts %}<article><div><strong>{{ prompt.name }} · {{ prompt.version }}</strong><span>{{ '当前版本' if prompt.active else '历史版本' }}</span></div><p>{{ prompt.content }}</p>{% if not prompt.active %}<form action="/settings/prompts/{{ prompt.id }}/restore" method="post"><button class="btn tiny">恢复为新版本</button></form>{% endif %}</article>{% endfor %}</div>
+  {% else %}
+    <div class="task-heading"><p class="eyebrow">System Ledger</p><h2>系统与迁移记录</h2><span>只读运行约束</span></div>
+    <dl class="system-facts"><div><dt>服务端口</dt><dd>8765（可由 KNOWLEDGE_FORGE_PORT 覆盖）</dd></div><div><dt>导出目录</dt><dd>Knowledge_Forge/Exports</dd></div><div><dt>导入队列</dt><dd>单任务串行，可批量排队</dd></div><div><dt>知识增强</dt><dd>单执行器，独立于核心处理</dd></div></dl>
+    <h3>最近迁移</h3><div class="migration-list">{% for run in migration_runs %}<article><strong>{{ run.completed_at or run.started_at }}</strong><span>新增 {{ run.created_sources }} · 歧义 {{ run.ambiguity_count }}</span><code>{{ run.report_path }}</code></article>{% else %}<div class="empty">暂无旧资料迁移记录。</div>{% endfor %}</div>
+  {% endif %}
+  </section>
+</div>
 {% endblock %}
+
+{% macro domain_form(domain, main_categories, tag_roots, accents) %}
+<form class="domain-form" action="/settings/domains/save" method="post">
+  <input type="hidden" name="domain_id" value="{{ domain.id if domain else 0 }}">
+  <label>名称<input name="name" required value="{{ domain.name if domain else '' }}" placeholder="例如：运动训练"></label>
+  <label>书脊色<select name="accent_key">{% for accent in accents %}<option value="{{ accent }}"{% if domain and domain.accent_key == accent %} selected{% endif %}>{{ accent }}</option>{% endfor %}</select></label>
+  {% set rules = domain.rules if domain else [] %}{% set selected_main = rules|selectattr('rule_type','equalto','main_category')|map(attribute='match_value')|list %}{% set selected_tags = rules|selectattr('rule_type','equalto','tag_prefix')|map(attribute='match_value')|list %}
+  <fieldset><legend>主分类</legend><div class="rule-options">{% for item in main_categories %}<label><input type="checkbox" name="main_categories" value="{{ item }}"{% if item in selected_main %} checked{% endif %}>{{ item }}</label>{% endfor %}</div></fieldset>
+  <fieldset><legend>标签根</legend><div class="rule-options">{% for item in tag_roots %}<label><input type="checkbox" name="tag_prefixes" value="{{ item }}"{% if item in selected_tags %} checked{% endif %}>{{ item }}</label>{% endfor %}</div></fieldset>
+  <button class="btn primary" type="submit">保存知识域</button>
+</form>
+{% endmacro %}
