@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import hashlib
+import json
 import threading
 import time
 import unicodedata
@@ -211,13 +212,14 @@ class PersistentTextImportQueue:
                 """,
                 (source["id"],),
             ).fetchall()
-        return [
-            {
-                **dict(row),
-                "is_current": row["id"] == source["current_version_id"],
-            }
-            for row in rows
-        ]
+        history = []
+        for row in rows:
+            item = dict(row)
+            item["is_current"] = row["id"] == source["current_version_id"]
+            item["quality_warnings"] = json.loads(item.get("quality_warnings_json") or "[]")
+            item["extraction_metadata"] = json.loads(item.get("extraction_metadata_json") or "{}")
+            history.append(item)
+        return history
 
     def _task_for_fingerprint(self, fingerprint: str) -> ImportTask | None:
         with connect(self.database_path) as conn:

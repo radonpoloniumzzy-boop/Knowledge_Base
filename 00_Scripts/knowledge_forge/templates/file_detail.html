@@ -27,6 +27,12 @@
       <div>
         <strong>版本 {{ version.version_number or loop.revindex }}</strong>
         <span>{{ version.original_filename or '历史资料' }}</span>
+        {% if version.extraction_metadata %}
+        <span>
+          格式 {{ (version.extraction_metadata.source_format or '-')|upper }}
+          · 提取 {{ version.extraction_metadata.character_count or 0 }} 字符
+        </span>
+        {% endif %}
       </div>
       <div class="version-state">
         {% if version.is_current %}<span class="badge completed">当前版本</span>
@@ -37,6 +43,11 @@
         <a class="btn tiny" href="/files/{{ version.standard_file_id }}">查看</a>
         {% endif %}
       </div>
+      {% if version.quality_warnings %}
+      <div class="version-warnings">
+        {% for warning in version.quality_warnings %}<span>{{ warning }}</span>{% endfor %}
+      </div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>

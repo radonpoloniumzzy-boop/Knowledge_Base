@@ -7,10 +7,19 @@ from typing import Callable
 from uuid import uuid4
 
 from .db import connect
+from .extraction import (
+    DamagedDocumentError,
+    DocumentExtractor,
+    EncryptedDocumentError,
+    MarkItDownDocumentExtractor,
+    TemporaryExtractionError,
+    UnsupportedDocumentError,
+)
 from .ingestion import (
     DeterministicImportError,
     ImportTask,
     TaskPaused,
+    TransientImportError,
 )
 from .services import chunk_text, clean_text, estimate_tokens
 
@@ -33,10 +42,12 @@ class CoreTextProcessor:
         standard_dir: Path,
         *,
         stage_hook: Callable[[str, str], None] | None = None,
+        extractor: DocumentExtractor | None = None,
     ) -> None:
         self.database_path = Path(database_path)
         self.standard_dir = Path(standard_dir)
         self._stage_hook = stage_hook or (lambda _stage, _moment: None)
+        self._extractor = extractor or MarkItDownDocumentExtractor()
 
     def process(self, task: ImportTask) -> None:
         version_id = self._ensure_version(task.id, task.file_id)
@@ -124,19 +135,64 @@ class CoreTextProcessor:
         if row is None:
             raise DeterministicImportError("extract_text", "找不到上传文件，请重新选择文件。")
         source = Path(row["source_path"])
-        if source.suffix.lower() not in {".txt", ".md", ".markdown"}:
-            raise DeterministicImportError(
-                "extract_text", "当前仅支持 TXT、Markdown 和 MARKDOWN 文本文件。"
-            )
         try:
-            text = clean_text(source.read_text(encoding="utf-8-sig"))
-        except UnicodeDecodeError as exc:
-            raise DeterministicImportError(
-                "extract_text", "文件编码无法读取，请转换为 UTF-8 后继续。"
+            extracted = self._extractor.extract(source)
+        except TemporaryExtractionError as exc:
+            raise TransientImportError(
+                "extract_text", "文档暂时无法读取，系统将自动重试。"
             ) from exc
+        except UnsupportedDocumentError as exc:
+            raise DeterministicImportError(
+                "extract_text", "当前文件格式不受支持，请转换为受支持的文档格式。"
+            ) from exc
+        except EncryptedDocumentError as exc:
+            raise DeterministicImportError(
+                "extract_text", "文档已加密或受密码保护，请解除保护后继续。"
+            ) from exc
+        except DamagedDocumentError as exc:
+            raise DeterministicImportError(
+                "extract_text", "文档可能已经损坏，请修复或重新导出后继续。"
+            ) from exc
+        text = clean_text(extracted.text)
         if not text:
-            raise DeterministicImportError("extract_text", "文件没有可用文本内容，请更换文件。")
-        self._commit_stage(task_id, "extract_text", text)
+            raise DeterministicImportError(
+                "extract_text", "文档没有提取到可用内容，请检查文件或重新导出。"
+            )
+        invalid_count = text.count("�") + sum(
+            1 for char in text if ord(char) < 32 and char not in "\n\r\t"
+        )
+        if invalid_count / max(len(text), 1) > 0.1:
+            raise DeterministicImportError(
+                "extract_text", "提取内容包含过多异常字符，请重新导出文档。"
+            )
+        compact = " ".join(text.casefold().split())
+        if len(compact) < 1000 and (
+            compact.startswith("404 not found")
+            or ("access denied" in compact and len(compact) < 300)
+            or compact.startswith("conversion failed")
+        ):
+            raise DeterministicImportError(
+                "extract_text", "提取结果是错误页面，请检查原文档后继续。"
+            )
+        metadata = {
+            **extracted.metadata,
+            "source_format": extracted.source_format,
+            "character_count": len(text),
+        }
+        self._stage_hook("extract_text", "before_commit")
+        with connect(self.database_path) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                "UPDATE source_versions SET extraction_metadata_json=? WHERE id=?",
+                (json.dumps(metadata, ensure_ascii=False), _version_id),
+            )
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO import_stage_results(task_id, stage_name, payload_text)
+                VALUES (?, 'extract_text', ?)
+                """,
+                (task_id, text),
+            )
 
     def _standard_document(self, task_id: int, file_id: int, version_id: int) -> None:
         text = self._payload(task_id, "extract_text")
@@ -150,7 +206,9 @@ class CoreTextProcessor:
         try:
             temporary.write_text(text, encoding="utf-8")
             if temporary.read_text(encoding="utf-8") != text:
-                raise IOError("Standard document verification failed")
+                raise DeterministicImportError(
+                    "standard_document", "标准知识文档写入验证失败，请检查存储位置。"
+                )
             os.replace(temporary, target)
         finally:
             temporary.unlink(missing_ok=True)
@@ -180,7 +238,34 @@ class CoreTextProcessor:
             raise DeterministicImportError(
                 "quality_validation", "标准知识文档为空，请检查源文件。"
             )
-        self._commit_stage(task_id, "quality_validation", json.dumps({"warnings": []}))
+        with connect(self.database_path) as conn:
+            metadata_row = conn.execute(
+                "SELECT extraction_metadata_json FROM source_versions WHERE id=?",
+                (_version_id,),
+            ).fetchone()
+        metadata = json.loads(metadata_row[0] or "{}")
+        warnings = []
+        if len(text.strip()) < 200:
+            warnings.append("内容较短，请确认提取结果是否完整。")
+        if metadata.get("source_format") in {"ppt", "pptx", "xls", "xlsx"} and len(text) < 1000:
+            warnings.append("表格或幻灯片文字较少，请确认结构信息是否完整。")
+        alphanumeric = sum(char.isalnum() for char in text)
+        if len(text) >= 200 and alphanumeric / max(len(text), 1) < 0.2:
+            warnings.append("文字密度较低，请确认图表或版式信息是否完整。")
+        self._stage_hook("quality_validation", "before_commit")
+        with connect(self.database_path) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                "UPDATE source_versions SET quality_warnings_json=? WHERE id=?",
+                (json.dumps(warnings, ensure_ascii=False), _version_id),
+            )
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO import_stage_results(task_id, stage_name, payload_text)
+                VALUES (?, 'quality_validation', ?)
+                """,
+                (task_id, json.dumps({"warnings": warnings}, ensure_ascii=False)),
+            )
 
     def _chunk_indexing(self, task_id: int, _file_id: int, version_id: int) -> None:
         text = self._payload(task_id, "extract_text")

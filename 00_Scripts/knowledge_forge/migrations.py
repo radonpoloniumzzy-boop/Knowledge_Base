@@ -285,12 +285,22 @@ def _add_content_identity_and_versions(conn: sqlite3.Connection) -> None:
     )
 
 
+def _add_extraction_quality_metadata(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        ALTER TABLE source_versions ADD COLUMN extraction_metadata_json TEXT;
+        ALTER TABLE source_versions ADD COLUMN quality_warnings_json TEXT NOT NULL DEFAULT '[]';
+        """
+    )
+
+
 DEFAULT_MIGRATIONS = (
     Migration(1, "initial-schema", _apply_initial_schema),
     Migration(2, "persistent-text-import-queue", _add_persistent_import_queue),
     Migration(3, "atomic-text-core-processing", _add_atomic_core_processing),
     Migration(4, "retry-pause-and-actionable-errors", _add_retry_pause_and_errors),
     Migration(5, "content-identity-and-source-versions", _add_content_identity_and_versions),
+    Migration(6, "document-extraction-and-quality-gates", _add_extraction_quality_metadata),
 )
 
 

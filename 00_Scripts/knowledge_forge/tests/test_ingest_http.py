@@ -14,6 +14,7 @@ class FakeQueue:
         self.tasks = []
         self.submitted = []
         self.entry_id = None
+        self.version_history = []
 
     def pause(self, task_id):
         self.paused.append(task_id)
@@ -39,6 +40,9 @@ class FakeQueue:
 
     def knowledge_entry_for_task(self, _task_id):
         return self.entry_id
+
+    def version_history_for_file(self, _file_id):
+        return self.version_history
 
 
 def test_http_pause_and_resume_use_ingestion_queue_interface(monkeypatch):
@@ -97,3 +101,48 @@ def test_single_duplicate_upload_redirects_to_existing_knowledge_entry(monkeypat
     assert response.status_code == 303
     assert response.headers["location"] == "/files/42"
     assert queue.submitted == [("copy.txt", b"same content")]
+
+
+def test_file_detail_displays_nonblocking_quality_warning(monkeypatch):
+    queue = FakeQueue()
+    queue.version_history = [
+        {
+            "version_number": 1,
+            "original_filename": "small.xlsx",
+            "is_current": True,
+            "status": "available",
+            "task_status": "completed",
+            "standard_file_id": 7,
+            "quality_warnings": ["内容较短，请确认提取结果是否完整。"],
+            "extraction_metadata": {"source_format": "xlsx", "character_count": 7},
+        }
+    ]
+    monkeypatch.setattr(app_module, "ingestion_queue", queue)
+    monkeypatch.setattr(
+        app_module.services,
+        "file_detail",
+        lambda _file_id: {
+            "file": {
+                "id": 7,
+                "title": "Small sheet",
+                "source_path": "small.xlsx",
+                "library_type": "standard",
+                "filename": "small.xlsx",
+                "main_category": None,
+                "sub_category": None,
+                "size_bytes": 100,
+                "status": "completed",
+            },
+            "tags": [],
+            "artifacts": [],
+            "chunks": [],
+        },
+    )
+    client = TestClient(app_module.app)
+
+    response = client.get("/files/7")
+
+    assert response.status_code == 200
+    assert "内容较短，请确认提取结果是否完整。" in response.text
+    assert "XLSX" in response.text
+    assert "7 字符" in response.text
