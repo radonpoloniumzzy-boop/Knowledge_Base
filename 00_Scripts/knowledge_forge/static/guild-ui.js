@@ -33,6 +33,35 @@
 
     if (document.body.dataset.page === "dashboard") initDashboard();
     if (document.body.dataset.page === "ingest") initIngest();
+    if (document.body.dataset.page === "packs") initPacks();
+  }
+
+  function initPacks() {
+    document.querySelectorAll("[data-tag-picker]").forEach((picker) => {
+      const tabs = [...picker.querySelectorAll(".tag-tab")];
+      const panels = [...picker.querySelectorAll(".tag-panel")];
+      const checks = [...picker.querySelectorAll("input[name='selected_tags']")];
+      const summary = picker.querySelector("[data-selected-summary]");
+      const activate = (top) => {
+        tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.top === top));
+        panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === top));
+      };
+      const updateSummary = () => {
+        const selected = checks.filter((item) => item.checked).map((item) => item.dataset.label || item.value);
+        if (!selected.length) summary.textContent = "未选择标签";
+        else {
+          const preview = selected.slice(0, 4).join("、");
+          summary.textContent = selected.length > 4 ? `${preview} 等 ${selected.length} 个标签` : preview;
+        }
+      };
+      tabs.forEach((tab) => tab.addEventListener("click", () => activate(tab.dataset.top)));
+      checks.forEach((check) => check.addEventListener("change", updateSummary));
+      picker.querySelector("[data-action='clear-tags']")?.addEventListener("click", () => {
+        checks.forEach((check) => { check.checked = false; });
+        updateSummary();
+      });
+      updateSummary();
+    });
   }
 
   function initIngest() {

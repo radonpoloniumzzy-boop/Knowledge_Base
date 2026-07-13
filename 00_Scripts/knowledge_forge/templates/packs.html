@@ -4,16 +4,11 @@
 {% macro tag_picker(selected_tags, tag_groups) %}
 <div class="tag-picker" data-tag-picker>
   <input type="hidden" name="include_tags" value="">
-  <div class="tag-picker-toolbar">
-    <span>选择标签范围</span>
-    <button class="mini-btn" type="button" data-action="clear-tags">清空</button>
-  </div>
+  <div class="tag-picker-toolbar"><span>选择知识范围</span><button class="mini-btn" type="button" data-action="clear-tags">清空</button></div>
   <div class="tag-picker-layout">
     <div class="tag-picker-tabs">
       {% for group in tag_groups %}
-      <button class="tag-tab {{ 'active' if loop.first else '' }}" type="button" data-top="{{ group.value }}">
-        {{ group.label }} <em>{{ group.count }}</em>
-      </button>
+      <button class="tag-tab {{ 'active' if loop.first else '' }}" type="button" data-top="{{ group.value }}">{{ group.label }} <em>{{ group.count }}</em></button>
       {% endfor %}
     </div>
     <div class="tag-picker-panels">
@@ -21,22 +16,14 @@
       <div class="tag-panel {{ 'active' if loop.first else '' }}" data-panel="{{ group.value }}">
         <label class="tag-option tag-option-root">
           <input type="checkbox" name="selected_tags" value="{{ group.value }}" data-label="全部 {{ group.label }}" {% if group.value in selected_tags %}checked{% endif %}>
-          <span>
-            <strong>全部 {{ group.label }}</strong>
-            <em>选择整个大类，自动包含它下面的子标签</em>
-          </span>
+          <span><strong>全部 {{ group.label }}</strong><em>包含此大类下的现有与未来子标签</em></span>
         </label>
         {% for child in group.children %}
         <label class="tag-option depth-{{ child.depth }}">
           <input type="checkbox" name="selected_tags" value="{{ child.value }}" data-label="{{ child.full_label }}" {% if child.value in selected_tags %}checked{% endif %}>
-          <span>
-            <strong>{{ child.label }}</strong>
-            <em>{{ child.count }} 文件</em>
-          </span>
+          <span><strong>{{ child.label }}</strong><em>{{ child.count }} 文件</em></span>
         </label>
-        {% else %}
-        <div class="empty small">这个大类暂时还没有细分标签。</div>
-        {% endfor %}
+        {% else %}<div class="empty small">这个大类暂时还没有细分标签。</div>{% endfor %}
       </div>
       {% endfor %}
     </div>
@@ -45,114 +32,104 @@
 </div>
 {% endmacro %}
 
+{% macro identity_fields(pack, emblem_colors, archetypes, auto=false) %}
+<div class="identity-fields">
+  <fieldset class="emblem-palette"><legend>徽记色</legend>
+    {% for color in emblem_colors %}
+    <label title="{{ color.label }}"><input type="radio" name="emblem_color" value="{{ color.value }}" {% if (pack and pack.emblem_color == color.value) or (not pack and loop.first) %}checked{% endif %}><span style="--swatch: {{ color.value }}"></span><em>{{ color.label }}</em></label>
+    {% endfor %}
+  </fieldset>
+  <label class="archetype-select">冒险原型
+    <select name="archetype_key" {% if auto %}data-auto-archetype{% endif %}>
+      {% if auto %}<option value="">根据知识范围自动建议</option>{% endif %}
+      {% for archetype in archetypes %}<option value="{{ archetype.key }}" {% if pack and pack.archetype_key == archetype.key %}selected{% endif %}>{{ archetype.label }} · {{ archetype.title }}</option>{% endfor %}
+    </select>
+  </label>
+</div>
+{% endmacro %}
+
 {% block content %}
-{% if error == "missing_name" %}
-<div class="notice error" role="alert">请输入能力包名称后再创建。</div>
-{% elif error == "missing_artifacts" %}
-<div class="notice error" role="alert">能力包缺少必需内容，请查看对应配方的导出预检。</div>
-{% endif %}
-<section class="page-head">
-  <div>
-    <p class="eyebrow">Packs</p>
-    <h1>能力包</h1>
-    <p>能力包是给不同 AI 职能使用的知识配方，不是固定文件夹。</p>
-  </div>
+{% if error == "missing_name" %}<div class="notice error" role="alert">请输入能力包名称后再创建。</div>
+{% elif error == "missing_artifacts" %}<div class="notice error" role="alert">能力包缺少必需内容，请查看当前职业的导出预检。</div>{% endif %}
+
+<section class="page-head adventure-head">
+  <div><p class="eyebrow">Adventurer registry</p><h1>冒险者能力包</h1><p>为不同 AI 职能配置知识、流程与洞察，不把未知职业限制在固定行业配色中。</p></div>
+  <a class="btn primary" href="#create-pack">新建能力包</a>
 </section>
 
-<section class="pack-grid">
-  {% for item in packs %}
-  <article class="pack-card">
-    <form class="pack-editor" action="/packs/{{ item.pack.id }}/save" method="post">
-      <div class="pack-head">
-        <input class="pack-name" name="name" value="{{ item.pack.name }}">
-        <span>{{ item.file_count }} 文件</span>
-      </div>
-      <textarea name="description" class="pack-description">{{ item.pack.description }}</textarea>
-      <label>标签配方</label>
-      {{ tag_picker(item.recipe.include_tags, tag_groups) }}
-      <label>最低置信度</label>
-      <input name="min_confidence" type="number" min="0" max="1" step="0.05" value="{{ item.recipe.min_confidence }}">
-      <div class="check-grid">
-        <label><input type="checkbox" name="include_sop" value="true" {% if item.pack.include_sop %}checked{% endif %}> SOP</label>
-        <label><input type="checkbox" name="include_insight" value="true" {% if item.pack.include_insight %}checked{% endif %}> Insight</label>
-        <label><input type="checkbox" name="include_source" value="true" {% if item.pack.include_source %}checked{% endif %}> 原文</label>
-      </div>
-      <button class="btn secondary" type="submit">保存配方</button>
-    </form>
-    <form action="/packs/{{ item.pack.id }}/export" method="post">
-      <label class="checkline"><input type="checkbox" name="include_low_confidence" value="true"> 包含低置信内容</label>
-      <button class="btn primary" type="submit" {% if not item.preflight.ready %}disabled{% endif %}>导出 ZIP + JSONL</button>
-    </form>
-    {% if not item.preflight.ready %}
-    <div class="notice {% if error_pack_id == item.pack.id %}error{% endif %}">
-      <strong>导出预检：缺少 {{ item.preflight.missing|length }} 项</strong>
-      {% for missing in item.preflight.missing[:8] %}
-      <span>{{ missing.title }}：{{ missing.message }}</span>
+{% if selected_pack %}
+<section class="adventure-workspace" style="--emblem-color: {{ selected_pack.pack.emblem_color }}">
+  <aside class="career-roster" aria-label="能力包名册">
+    <div class="workspace-label"><span>01</span><strong>职业名册</strong></div>
+    <nav>
+      {% for item in packs %}
+      <a class="career-entry {{ 'active' if item.pack.id == selected_pack.pack.id else '' }}" href="/packs?selected={{ item.pack.id }}" {% if item.pack.id == selected_pack.pack.id %}aria-current="true"{% endif %} style="--entry-color: {{ item.pack.emblem_color }}">
+        <svg class="guild-icon" aria-hidden="true"><use href="/static/guild-icons.svg#archetype-{{ item.archetype.key }}"></use></svg>
+        <span><strong>{{ item.pack.name }}</strong><em>{{ item.archetype.label }} · {{ item.file_count }} 文件</em></span>
+      </a>
       {% endfor %}
-      {% if item.preflight.missing|length > 8 %}<span>其余 {{ item.preflight.missing|length - 8 }} 项请先补充后再导出。</span>{% endif %}
+    </nav>
+  </aside>
+
+  <section class="character-status">
+    <div class="workspace-label"><span>02</span><strong>人物状态</strong></div>
+    <div class="character-emblem">
+      <div class="emblem-ring"><svg class="guild-icon" aria-hidden="true"><use href="/static/guild-icons.svg#archetype-{{ selected_pack.archetype.key }}"></use></svg></div>
+      <p>{{ selected_pack.archetype.label }}</p>
+      <h2>{{ selected_pack.pack.name }}</h2>
+      <span>{{ selected_pack.archetype.title }}</span>
     </div>
-    {% endif %}
-    <form class="pack-delete-form" action="/packs/{{ item.pack.id }}/delete" method="post" onsubmit="return confirm('确定删除这个能力包吗？知识库文件不会被删除。');">
-      <button class="btn danger" type="submit">删除能力包</button>
-    </form>
-  </article>
-  {% endfor %}
+    <div class="status-stats">
+      <div><span>资料覆盖</span><strong>{{ selected_pack.file_count }}</strong></div>
+      <div><span>SOP</span><strong>{{ selected_pack.artifact_counts.sop }}</strong></div>
+      <div><span>Insight</span><strong>{{ selected_pack.artifact_counts.insight }}</strong></div>
+      <div><span>最低置信度</span><strong>{{ (selected_pack.recipe.min_confidence * 100) | int }}%</strong></div>
+    </div>
+    <p class="character-description">{{ selected_pack.pack.description or '尚未填写这个职业的职责说明。' }}</p>
+  </section>
+
+  <section class="knowledge-inventory">
+    <div class="workspace-label"><span>03</span><strong>知识背包</strong></div>
+    <div class="inventory-groups">
+      {% for group in selected_pack.inventory_groups %}
+      <section class="inventory-group"><h3>{{ group.label }}</h3><div class="inventory-slots">
+        {% for item in group['items'] %}<a class="inventory-slot" href="/library?tag={{ item.value | urlencode }}" title="{{ item.value }}"><span aria-hidden="true">✦</span><strong>{{ item.label }}</strong></a>{% endfor %}
+      </div></section>
+      {% else %}<div class="empty">这个背包还没有装入知识。</div>{% endfor %}
+    </div>
+  </section>
 </section>
 
-<section class="panel">
-  <div class="panel-head">
-    <h2>新建能力包</h2>
-    <span>从大类或细分标签中勾选，不需要手打标签名</span>
-  </div>
-  <form class="new-pack-form" action="/packs/create" method="post">
-    <label for="new-pack-name">能力包名称</label>
-    <input id="new-pack-name" name="name" placeholder="例如：企业管理知识包" required autocomplete="off">
-    <input name="description" placeholder="这个能力包给什么 AI 使用">
-    {{ tag_picker([], tag_groups) }}
-    <input name="min_confidence" type="number" min="0" max="1" step="0.05" value="0.7">
-    <div class="check-grid">
-      <label><input type="checkbox" name="include_sop" value="true" checked> SOP</label>
-      <label><input type="checkbox" name="include_insight" value="true" checked> Insight</label>
-      <label><input type="checkbox" name="include_source" value="true"> 原文</label>
+<section class="panel loadout-editor">
+  <div class="panel-head"><div><p class="panel-kicker">Loadout</p><h2>编辑当前能力包</h2></div><span>身份只影响显示，不改变导出快照</span></div>
+  <form class="pack-editor" action="/packs/{{ selected_pack.pack.id }}/save" method="post">
+    <div class="pack-fields"><label>名称<input class="pack-name" name="name" value="{{ selected_pack.pack.name }}" required></label><label>职责说明<textarea name="description" class="pack-description">{{ selected_pack.pack.description }}</textarea></label></div>
+    {{ identity_fields(selected_pack.pack, emblem_colors, archetypes) }}
+    {{ tag_picker(selected_pack.recipe.include_tags, tag_groups) }}
+    <div class="loadout-options">
+      <label>最低置信度<input name="min_confidence" type="number" min="0" max="1" step="0.05" value="{{ selected_pack.recipe.min_confidence }}"></label>
+      <div class="check-grid"><label><input type="checkbox" name="include_sop" value="true" {% if selected_pack.pack.include_sop %}checked{% endif %}> SOP</label><label><input type="checkbox" name="include_insight" value="true" {% if selected_pack.pack.include_insight %}checked{% endif %}> Insight</label><label><input type="checkbox" name="include_source" value="true" {% if selected_pack.pack.include_source %}checked{% endif %}> 原文</label></div>
+      <button class="btn secondary" type="submit">保存配置</button>
     </div>
-    <button class="btn primary" type="submit">创建能力包</button>
+  </form>
+  <div class="pack-delivery">
+    <div>
+      {% if selected_pack.preflight.ready %}<strong>导出预检通过</strong><span>当前配方所需内容已齐备。</span>
+      {% else %}<strong>导出预检：缺少 {{ selected_pack.preflight.missing|length }} 项</strong>{% for missing in selected_pack.preflight.missing[:5] %}<span>{{ missing.title }}：{{ missing.message }}</span>{% endfor %}{% endif %}
+    </div>
+    <form action="/packs/{{ selected_pack.pack.id }}/export" method="post"><label class="checkline"><input type="checkbox" name="include_low_confidence" value="true"> 包含低置信内容</label><button class="btn primary" type="submit" {% if not selected_pack.preflight.ready %}disabled{% endif %}>导出 ZIP + JSONL</button></form>
+    <form class="pack-delete-form" action="/packs/{{ selected_pack.pack.id }}/delete" method="post" onsubmit="return confirm('确定删除这个能力包吗？知识库文件不会被删除。');"><button class="btn danger" type="submit">删除能力包</button></form>
+  </div>
+</section>
+{% else %}<section class="adventure-empty"><svg class="guild-icon" aria-hidden="true"><use href="/static/guild-icons.svg#archetype-adventurer"></use></svg><h2>名册还是空的</h2><p>建立第一个能力包，为 AI 配置需要携带的知识。</p></section>{% endif %}
+
+<section class="panel create-pack-panel" id="create-pack">
+  <div class="panel-head"><div><p class="panel-kicker">New calling</p><h2>登记新职业</h2></div><span>先选大类，也可以只挑其中一部分</span></div>
+  <form class="new-pack-form" action="/packs/create" method="post">
+    <div class="pack-fields"><label>能力包名称<input name="name" placeholder="例如：运动训练教练" required autocomplete="off"></label><label>职责说明<input name="description" placeholder="这个能力包给什么 AI 使用"></label></div>
+    {{ identity_fields(none, emblem_colors, archetypes, true) }}
+    {{ tag_picker([], tag_groups) }}
+    <div class="loadout-options"><label>最低置信度<input name="min_confidence" type="number" min="0" max="1" step="0.05" value="0.7"></label><div class="check-grid"><label><input type="checkbox" name="include_sop" value="true" checked> SOP</label><label><input type="checkbox" name="include_insight" value="true" checked> Insight</label><label><input type="checkbox" name="include_source" value="true"> 原文</label></div><button class="btn primary" type="submit">创建能力包</button></div>
   </form>
 </section>
-
-<script>
-  (function () {
-    document.querySelectorAll("[data-tag-picker]").forEach((picker) => {
-      const tabs = Array.from(picker.querySelectorAll(".tag-tab"));
-      const panels = Array.from(picker.querySelectorAll(".tag-panel"));
-      const summary = picker.querySelector("[data-selected-summary]");
-      const clear = picker.querySelector("[data-action='clear-tags']");
-      const checks = Array.from(picker.querySelectorAll("input[name='selected_tags']"));
-
-      function activate(top) {
-        tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.top === top));
-        panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === top));
-      }
-
-      function updateSummary() {
-        const selected = checks.filter((item) => item.checked).map((item) => item.dataset.label || item.value);
-        if (!selected.length) {
-          summary.textContent = "未选择标签";
-          return;
-        }
-        const preview = selected.slice(0, 4).join("、");
-        summary.textContent = selected.length > 4 ? `${preview} 等 ${selected.length} 个标签` : preview;
-      }
-
-      tabs.forEach((tab) => tab.addEventListener("click", () => activate(tab.dataset.top)));
-      checks.forEach((check) => check.addEventListener("change", updateSummary));
-      if (clear) {
-        clear.addEventListener("click", () => {
-          checks.forEach((check) => { check.checked = false; });
-          updateSummary();
-        });
-      }
-      updateSummary();
-    });
-  })();
-</script>
 {% endblock %}

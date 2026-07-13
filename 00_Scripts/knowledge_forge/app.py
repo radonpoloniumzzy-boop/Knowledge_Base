@@ -291,13 +291,21 @@ def regenerate_enhancement(file_id: int, kind: str):
 
 
 @app.get("/packs", response_class=HTMLResponse)
-def packs(request: Request, error: str = "", pack_id: int = 0):
+def packs(request: Request, error: str = "", pack_id: int = 0, selected: int = 0):
+    pack_items = services.list_packs()
+    selected_id = selected or pack_id
+    selected_pack = next(
+        (item for item in pack_items if int(item["pack"]["id"]) == selected_id),
+        pack_items[0] if pack_items else None,
+    )
     return templates.TemplateResponse(
         request,
         "packs.html",
         ctx(
-            request, "packs", packs=services.list_packs(),
+            request, "packs", packs=pack_items, selected_pack=selected_pack,
             tag_groups=services.tag_picker_groups(), error=error, error_pack_id=pack_id,
+            emblem_colors=services.PACK_EMBLEM_COLORS,
+            archetypes=[{"key": key, **value} for key, value in services.PACK_ARCHETYPES.items()],
         ),
     )
 
@@ -317,7 +325,9 @@ def export_pack(pack_id: int, include_low_confidence: bool = Form(False)):
 def delete_pack(pack_id: int):
     if not services.delete_pack(pack_id):
         raise HTTPException(status_code=404, detail="Pack not found")
-    return RedirectResponse("/packs", status_code=303)
+    remaining = services.list_packs()
+    target = f"/packs?selected={remaining[0]['pack']['id']}" if remaining else "/packs"
+    return RedirectResponse(target, status_code=303)
 
 
 @app.post("/packs/{pack_id}/save")
@@ -331,10 +341,16 @@ def save_pack(
     include_sop: bool = Form(False),
     include_insight: bool = Form(False),
     include_source: bool = Form(False),
+    emblem_color: str = Form(""),
+    archetype_key: str = Form(""),
 ):
     tag_text = "\n".join([include_tags, *selected_tags])
-    services.save_pack_recipe(pack_id, name, description, tag_text, min_confidence, include_sop, include_insight, include_source)
-    return RedirectResponse("/packs", status_code=303)
+    services.save_pack_recipe(
+        pack_id, name, description, tag_text, min_confidence,
+        include_sop, include_insight, include_source,
+        emblem_color or None, archetype_key or None,
+    )
+    return RedirectResponse(f"/packs?selected={pack_id}", status_code=303)
 
 
 @app.post("/packs/create")
@@ -347,13 +363,19 @@ def create_pack(
     include_sop: bool = Form(False),
     include_insight: bool = Form(False),
     include_source: bool = Form(False),
+    emblem_color: str = Form(""),
+    archetype_key: str = Form(""),
 ):
     name = name.strip()
     if not name:
         return RedirectResponse("/packs?error=missing_name", status_code=303)
     tag_text = "\n".join([include_tags, *selected_tags])
-    services.save_pack_recipe(None, name, description, tag_text, min_confidence, include_sop, include_insight, include_source)
-    return RedirectResponse("/packs", status_code=303)
+    created_id = services.save_pack_recipe(
+        None, name, description, tag_text, min_confidence,
+        include_sop, include_insight, include_source,
+        emblem_color or None, archetype_key or None,
+    )
+    return RedirectResponse(f"/packs?selected={created_id}", status_code=303)
 
 
 @app.get("/download")

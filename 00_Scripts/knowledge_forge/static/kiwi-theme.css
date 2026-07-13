@@ -344,6 +344,66 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
 .tag-option { border-radius: var(--kf-radius); }
 .tag-option-root { background: var(--kf-primary-soft); border-color: #c9e4de; }
 
+/* Packs: a character sheet and inventory, with identity separate from recipe. */
+.adventure-head .eyebrow { color: var(--kf-pack-brass); }
+.adventure-workspace { display: grid; grid-template-columns: 220px 290px minmax(0, 1fr); min-height: 470px; margin-bottom: 14px; overflow: hidden; border: 1px solid #454959; border-radius: var(--kf-radius); color: #ececf2; background: linear-gradient(125deg, #242631 0%, #30323f 52%, #282a35 100%); box-shadow: 0 16px 36px rgba(37, 38, 48, .17); }
+.workspace-label { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 14px; border-bottom: 1px solid rgba(226, 226, 235, .12); color: #bcbec9; font-size: 11px; text-transform: uppercase; }
+.workspace-label span { color: var(--emblem-color); font: 700 10px/1 Consolas, monospace; }
+.career-roster { min-width: 0; border-right: 1px solid rgba(226,226,235,.12); background: rgba(13, 14, 20, .18); }
+.career-roster nav { display: grid; max-height: 428px; overflow-y: auto; }
+.career-entry { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: center; gap: 9px; min-height: 64px; padding: 9px 12px; border-bottom: 1px solid rgba(226,226,235,.08); color: #bfc1cc; }
+.career-entry::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--entry-color); opacity: 0; }
+.career-entry:hover { background: rgba(255,255,255,.04); color: #fff; }
+.career-entry.active { background: rgba(255,255,255,.07); color: #fff; }
+.career-entry.active::before { opacity: 1; }
+.career-entry .guild-icon { width: 28px; height: 28px; padding: 5px; border: 1px solid color-mix(in srgb, var(--entry-color) 58%, #7f8291); border-radius: 50%; color: var(--entry-color); }
+.career-entry span { min-width: 0; }
+.career-entry strong, .career-entry em { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.career-entry strong { font-size: 12px; }.career-entry em { color: #9295a3; font-style: normal; font-size: 10px; }
+.character-status { min-width: 0; border-right: 1px solid rgba(226,226,235,.12); }
+.character-emblem { display: flex; flex-direction: column; align-items: center; padding: 28px 18px 20px; text-align: center; }
+.emblem-ring { position: relative; display: grid; place-items: center; width: 104px; height: 104px; margin-bottom: 14px; border: 1px solid color-mix(in srgb, var(--emblem-color) 72%, #c8c9d0); border-radius: 50%; color: var(--emblem-color); box-shadow: inset 0 0 0 8px rgba(255,255,255,.025), 0 0 24px color-mix(in srgb, var(--emblem-color) 32%, transparent); }
+.emblem-ring::before, .emblem-ring::after { content: ""; position: absolute; width: 118px; height: 54px; border-top: 1px solid color-mix(in srgb, var(--emblem-color) 45%, transparent); border-radius: 50%; transform: rotate(28deg); }
+.emblem-ring::after { transform: rotate(-28deg); }
+.emblem-ring .guild-icon { width: 50px; height: 50px; stroke-width: 1.45; }
+.character-emblem p { color: var(--emblem-color); font: 600 10px/1.4 Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.character-emblem h2 { max-width: 100%; margin: 3px 0; overflow-wrap: anywhere; font-size: 21px; }
+.character-emblem > span { color: #a4a6b2; font-size: 11px; }
+.status-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 16px; border-top: 1px solid rgba(226,226,235,.1); border-left: 1px solid rgba(226,226,235,.1); }
+.status-stats div { padding: 11px; border-right: 1px solid rgba(226,226,235,.1); border-bottom: 1px solid rgba(226,226,235,.1); }
+.status-stats span, .status-stats strong { display: block; }.status-stats span { color: #9698a5; font-size: 10px; }.status-stats strong { color: #f1f1f5; font-size: 18px; }
+.character-description { margin: 16px; color: #adafba; font-size: 11px; }
+.knowledge-inventory { min-width: 0; }
+.inventory-groups { max-height: 428px; overflow-y: auto; padding: 16px; }
+.inventory-group + .inventory-group { margin-top: 16px; }
+.inventory-group h3 { margin-bottom: 7px; color: #b8bac5; font-size: 11px; }
+.inventory-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.inventory-slot { position: relative; display: grid; place-items: center; align-content: center; gap: 4px; min-width: 0; aspect-ratio: 1.15; padding: 8px; border: 1px solid rgba(215,216,226,.14); background: rgba(255,255,255,.035); text-align: center; }
+.inventory-slot:hover { border-color: color-mix(in srgb, var(--emblem-color) 60%, #aaa); background: rgba(255,255,255,.07); }
+.inventory-slot span { color: var(--emblem-color); text-shadow: 0 0 8px color-mix(in srgb, var(--emblem-color) 60%, transparent); }
+.inventory-slot strong { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.loadout-editor { padding: 18px; }
+.pack-editor { display: grid; gap: 14px; }
+.pack-fields { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(260px, 1.3fr); gap: 10px; }
+.pack-fields label, .archetype-select, .loadout-options > label { display: grid; gap: 5px; color: var(--kf-ink-soft); font-size: 11px; }
+.pack-fields input, .pack-fields textarea, .archetype-select select, .loadout-options input { width: 100%; min-height: 40px; border: 1px solid var(--kf-line-strong); border-radius: var(--kf-radius); background: #fff; color: var(--kf-ink); }
+.pack-fields input, .archetype-select select, .loadout-options input { padding: 0 10px; }
+.pack-fields textarea { min-height: 72px; padding: 9px 10px; resize: vertical; }
+.identity-fields { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(260px, 1fr); gap: 14px; align-items: end; }
+.emblem-palette { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; padding: 0; border: 0; }
+.emblem-palette legend { width: 100%; margin-bottom: 5px; color: var(--kf-ink-soft); font-size: 11px; }
+.emblem-palette label { position: relative; display: grid; grid-template-columns: 28px auto; align-items: center; gap: 5px; cursor: pointer; }
+.emblem-palette input { position: absolute; opacity: 0; }
+.emblem-palette span { width: 28px; height: 28px; border: 3px solid #fff; border-radius: 50%; background: var(--swatch); box-shadow: 0 0 0 1px var(--kf-line-strong); }
+.emblem-palette input:checked + span { box-shadow: 0 0 0 2px var(--kf-ink), 0 0 0 4px #fff; }
+.emblem-palette em { color: var(--kf-ink-soft); font-style: normal; font-size: 10px; }
+.loadout-options { display: grid; grid-template-columns: 150px minmax(240px, 1fr) auto; gap: 12px; align-items: end; }
+.pack-delivery { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 14px; align-items: end; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--kf-line); }
+.pack-delivery > div strong, .pack-delivery > div span { display: block; }.pack-delivery > div span { color: var(--kf-ink-soft); font-size: 11px; }
+.pack-delivery form { display: grid; gap: 6px; }
+.adventure-empty { display: grid; place-items: center; min-height: 300px; margin-bottom: 14px; border: 1px dashed var(--kf-line-strong); color: var(--kf-ink-soft); text-align: center; }.adventure-empty .guild-icon { width: 58px; height: 58px; color: var(--kf-pack-brass); }
+.create-pack-panel { scroll-margin-top: 82px; }
+
 .prompt-editor, .tag-row, .enhancement-row, .version-row, .artifact { border-color: var(--kf-line); border-radius: var(--kf-radius); background: var(--kf-surface-subtle); }
 .prompt-title span, .history summary { color: var(--kf-primary); }
 .notice { border-radius: var(--kf-radius); }
@@ -360,6 +420,9 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
   .forge-step { padding-inline: 11px; }
   .constellation-panel { grid-template-columns: 200px minmax(0, 1fr); }
   .alchemy-workbench { grid-template-columns: minmax(260px, .75fr) minmax(360px, 1.25fr); }
+  .adventure-workspace { grid-template-columns: 190px 270px minmax(0, 1fr); }
+  .inventory-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .identity-fields { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
@@ -413,6 +476,17 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
   .alchemy-upload { padding: 20px; }
   .alchemy-dropzone { min-height: 160px; }
   .alchemy-upload .btn { width: 100%; }
+  .adventure-workspace { grid-template-columns: 1fr; }
+  .career-roster, .character-status { border-right: 0; border-bottom: 1px solid rgba(226,226,235,.12); }
+  .career-roster nav { display: flex; max-height: none; overflow-x: auto; }
+  .career-entry { flex: 0 0 210px; border-right: 1px solid rgba(226,226,235,.08); }
+  .character-status { padding-bottom: 18px; }
+  .inventory-groups { max-height: 520px; }
+  .inventory-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pack-fields, .identity-fields, .loadout-options, .pack-delivery { grid-template-columns: 1fr; }
+  .emblem-palette label { grid-template-columns: 28px; }
+  .emblem-palette em { display: none; }
+  .pack-delivery .btn { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -389,6 +389,21 @@ def _contract_legacy_import_settings(conn: sqlite3.Connection) -> None:
         )
 
 
+def _add_pack_visual_identity(conn: sqlite3.Connection) -> None:
+    palette = ("#7C6CCF", "#3F74C7", "#B05F8F", "#5F6F9C", "#9A654B")
+    conn.execute(
+        "ALTER TABLE packs ADD COLUMN emblem_color TEXT NOT NULL DEFAULT '#7C6CCF'"
+    )
+    conn.execute(
+        "ALTER TABLE packs ADD COLUMN archetype_key TEXT NOT NULL DEFAULT 'adventurer'"
+    )
+    for offset, color in enumerate(palette):
+        conn.execute(
+            "UPDATE packs SET emblem_color=? WHERE ((id - 1) % ?) = ?",
+            (color, len(palette), offset),
+        )
+
+
 DEFAULT_MIGRATIONS = (
     Migration(1, "initial-schema", _apply_initial_schema),
     Migration(2, "persistent-text-import-queue", _add_persistent_import_queue),
@@ -400,6 +415,7 @@ DEFAULT_MIGRATIONS = (
     Migration(8, "knowledge-recycle-bin", _add_knowledge_recycle_bin),
     Migration(9, "legacy-knowledge-migration-tracking", _add_legacy_knowledge_migration_tracking),
     Migration(10, "contract-legacy-import-settings", _contract_legacy_import_settings),
+    Migration(11, "pack-visual-identity", _add_pack_visual_identity),
 )
 
 

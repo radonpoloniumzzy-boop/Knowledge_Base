@@ -62,6 +62,48 @@ ROOT_LABELS = {
     "99_General": "通用知识",
 }
 
+PACK_EMBLEM_COLORS = (
+    {"value": "#7C6CCF", "label": "奥术紫"},
+    {"value": "#3F74C7", "label": "星辉蓝"},
+    {"value": "#B05F8F", "label": "吟游莓"},
+    {"value": "#5F6F9C", "label": "守夜灰蓝"},
+    {"value": "#9A654B", "label": "行商铜"},
+)
+PACK_ARCHETYPES = {
+    "adventurer": {"label": "冒险者", "title": "未知道路的探索者"},
+    "bard": {"label": "吟游诗人", "title": "灵感与表达的编织者"},
+    "merchant": {"label": "行商者", "title": "机会与资源的联结者"},
+    "ranger": {"label": "游侠", "title": "实践与训练的引路人"},
+    "artificer": {"label": "奥术技师", "title": "系统与工具的构造者"},
+    "warden": {"label": "守卫", "title": "边界与风险的看守者"},
+    "scholar": {"label": "学者", "title": "知识脉络的研习者"},
+}
+DEFAULT_PACK_COLOR = PACK_EMBLEM_COLORS[0]["value"]
+DEFAULT_PACK_ARCHETYPE = "adventurer"
+
+
+def suggest_pack_archetype(tags: list[str]) -> str:
+    roots = " ".join(tag.split("/", 1)[0].lower() for tag in tags)
+    rules = (
+        (("art", "media", "艺术", "传媒", "剪辑", "摄影"), "bard"),
+        (("sales", "marketing", "ops", "销售", "营销", "企业管理"), "merchant"),
+        (("coding", "ai", "编程", "人工智能", "工具"), "artificer"),
+        (("finance", "law", "金融", "法律", "风控", "合规"), "warden"),
+        (("sport", "training", "education", "运动", "训练", "教育"), "ranger"),
+        (("general", "通用", "学术", "研究"), "scholar"),
+    )
+    return next((key for needles, key in rules if any(needle in roots for needle in needles)), DEFAULT_PACK_ARCHETYPE)
+
+
+def _pack_color(value: str | None) -> str:
+    normalized = (value or "").strip().upper()
+    allowed = {item["value"] for item in PACK_EMBLEM_COLORS}
+    return normalized if normalized in allowed else DEFAULT_PACK_COLOR
+
+
+def _pack_archetype(value: str | None) -> str:
+    return value if value in PACK_ARCHETYPES else DEFAULT_PACK_ARCHETYPE
+
 
 DEFAULT_PROMPTS = {
     "clean_transcript": """清洗学习资料转写稿。去除口癖、重复寒暄、无意义语气词，保留知识点、案例和步骤。输出 Markdown。""",
@@ -923,11 +965,37 @@ def list_packs() -> list[dict[str, Any]]:
             recipe = json.loads(pack["recipe_json"])
             files = files_for_pack(pack["id"], conn=conn)
             preflight = _pack_export_preflight(conn, pack, files)
+            file_ids = [int(file["id"]) for file in files]
+            artifact_counts = {"sop": 0, "insight": 0}
+            if file_ids:
+                placeholders = ",".join("?" for _ in file_ids)
+                for row in conn.execute(
+                    f"""
+                    SELECT artifact_type, COUNT(DISTINCT file_id) AS count
+                    FROM artifacts
+                    WHERE file_id IN ({placeholders}) AND artifact_type IN ('sop', 'insight')
+                    GROUP BY artifact_type
+                    """,
+                    file_ids,
+                ):
+                    artifact_counts[row["artifact_type"]] = int(row["count"])
+            inventory: dict[str, list[dict[str, str]]] = {}
+            for tag in recipe.get("include_tags", []):
+                root = tag.split("/", 1)[0]
+                inventory.setdefault(display_root_label(root), []).append(
+                    {"value": tag, "label": display_tag_leaf(tag)}
+                )
+            archetype_key = _pack_archetype(pack["archetype_key"])
             output.append({
                 "pack": pack,
                 "recipe": recipe,
                 "file_count": len(files),
                 "preflight": preflight,
+                "artifact_counts": artifact_counts,
+                "inventory_groups": [
+                    {"label": label, "items": items} for label, items in inventory.items()
+                ],
+                "archetype": {"key": archetype_key, **PACK_ARCHETYPES[archetype_key]},
             })
         return output
 
@@ -953,6 +1021,8 @@ def save_pack_recipe(
     include_sop: bool = True,
     include_insight: bool = True,
     include_source: bool = False,
+    emblem_color: str | None = None,
+    archetype_key: str | None = None,
 ) -> int:
     name = name.strip()
     if not name:
@@ -970,21 +1040,33 @@ def save_pack_recipe(
         for tag in tags:
             ensure_tag(conn, tag)
         if pack_id:
+            existing = conn.execute(
+                "SELECT emblem_color, archetype_key FROM packs WHERE id=?", (pack_id,)
+            ).fetchone()
+            if not existing:
+                raise ValueError("能力包不存在")
+            color = existing["emblem_color"] if emblem_color is None else _pack_color(emblem_color)
+            archetype = existing["archetype_key"] if archetype_key is None else _pack_archetype(archetype_key)
             conn.execute(
                 """
                 UPDATE packs
-                SET name=?, description=?, recipe_json=?, include_sop=?, include_insight=?, include_source=?, updated_at=CURRENT_TIMESTAMP
+                SET name=?, description=?, recipe_json=?, include_sop=?, include_insight=?, include_source=?,
+                    emblem_color=?, archetype_key=?, updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
                 """,
-                (name, description.strip(), json.dumps(recipe, ensure_ascii=False), int(include_sop), int(include_insight), int(include_source), pack_id),
+                (name, description.strip(), json.dumps(recipe, ensure_ascii=False), int(include_sop), int(include_insight), int(include_source), color, archetype, pack_id),
             )
             return pack_id
+        color = _pack_color(emblem_color)
+        archetype = _pack_archetype(archetype_key) if archetype_key is not None else suggest_pack_archetype(tags)
         cur = conn.execute(
             """
-            INSERT INTO packs(name, description, recipe_json, include_sop, include_insight, include_source)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO packs(
+                name, description, recipe_json, include_sop, include_insight, include_source,
+                emblem_color, archetype_key
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (name, description.strip(), json.dumps(recipe, ensure_ascii=False), int(include_sop), int(include_insight), int(include_source)),
+            (name, description.strip(), json.dumps(recipe, ensure_ascii=False), int(include_sop), int(include_insight), int(include_source), color, archetype),
         )
         return int(cur.lastrowid)
 
