@@ -26,6 +26,8 @@ class RecycledSource:
     deleted_at: str
     purge_after: str
     current_version_id: int | None
+    days_remaining: int
+    is_urgent: bool
 
 
 class KnowledgeRecycleBin:
@@ -176,7 +178,24 @@ class KnowledgeRecycleBin:
                 ORDER BY ks.deleted_at DESC, ks.id DESC
                 """
             ).fetchall()
-        return [RecycledSource(**dict(row)) for row in rows]
+        now = self._clock()
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        sources = []
+        for row in rows:
+            values = dict(row)
+            purge_after = datetime.fromisoformat(values["purge_after"])
+            if purge_after.tzinfo is None:
+                purge_after = purge_after.replace(tzinfo=timezone.utc)
+            remaining = max(0, (purge_after.date() - now.astimezone(timezone.utc).date()).days)
+            sources.append(
+                RecycledSource(
+                    **values,
+                    days_remaining=remaining,
+                    is_urgent=remaining <= 7,
+                )
+            )
+        return sources
 
     def source_id_for_file(self, file_id: int) -> int | None:
         with connect(self.database_path) as conn:

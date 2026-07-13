@@ -165,6 +165,23 @@ def test_expired_source_cannot_be_restored(tmp_path):
         current.restore(source_id)
 
 
+def test_recycled_source_reports_remaining_days_and_urgent_state(tmp_path):
+    database_path, managed_dir, source_id, _, _, _ = make_available_source(tmp_path)
+    deleted_at = datetime(2026, 7, 1, 8, 0, tzinfo=timezone.utc)
+    recycle_bin = KnowledgeRecycleBin(database_path, (managed_dir,), clock=lambda: deleted_at)
+    recycle_bin.recycle(source_id)
+
+    later = KnowledgeRecycleBin(
+        database_path,
+        (managed_dir,),
+        clock=lambda: deleted_at + timedelta(days=24, hours=1),
+    )
+    source = later.list_recycled()[0]
+
+    assert source.days_remaining == 6
+    assert source.is_urgent is True
+
+
 def test_purge_expired_removes_only_managed_files_and_preserves_exports(tmp_path):
     database_path, managed_dir, source_id, _, pack_id, standard_path = make_available_source(tmp_path)
     outside_path = tmp_path / "personal-source.txt"

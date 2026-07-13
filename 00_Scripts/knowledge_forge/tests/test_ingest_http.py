@@ -220,7 +220,7 @@ def test_http_recycle_and_restore_use_recycle_bin_interface(monkeypatch):
     assert recycle_bin.recycled == [81]
     assert recycle_bin.restored == [81]
     assert page.status_code == 200
-    assert "回收站为空" in page.text
+    assert "Temporary Registry" in page.text
 
 
 def test_file_metadata_can_be_edited_from_detail_page(monkeypatch):

@@ -1,44 +1,43 @@
 {% extends "base.html" %}
 {% block title %}回收站 - 知识炼制台{% endblock %}
 {% block content %}
-<section class="page-head">
+<section class="page-head lost-alley-head">
   <div>
-    <p class="eyebrow">Recycle Bin</p>
-    <h1>回收站</h1>
-    <p>知识资料保留 30 天，恢复后继续使用删除前的当前版本。</p>
+    <p class="eyebrow">Guild Lost &amp; Found</p>
+    <h1>公会酒馆 · 失物巷</h1>
+    <p>移出的知识资料在此暂存 30 天。恢复后重新进入知识库，暂停的任务仍由你决定何时继续。</p>
   </div>
+  <div class="lost-alley-sign" aria-hidden="true"><span>30</span><small>天保留</small></div>
 </section>
-
 {% if duplicate_source %}
-<section class="panel">
-  <strong>相同内容已经在回收站中。</strong>
-  <span>请恢复原知识资料；系统不会静默创建重复版本。</span>
+<section class="duplicate-notice" role="status">
+  <div><strong>相同内容正在失物巷中暂存</strong><span>系统没有创建重复版本。对应资料已经为你标出，可以直接恢复。</span></div>
+  <a class="btn secondary" href="#source-{{ duplicate_source }}">查看资料</a>
 </section>
 {% endif %}
-
-<section class="panel">
+<section class="lost-ledger">
   <div class="panel-head">
-    <h2>已删除的知识资料</h2>
-    <span>{{ sources|length }} 项</span>
+    <div><p class="eyebrow">Temporary Registry</p><h2>失物登记簿</h2></div>
+    <span>{{ sources|length }} 份资料</span>
   </div>
-  <div class="table-scroll"><table class="data-table">
-    <thead><tr><th>资料</th><th>删除时间</th><th>自动清理时间</th><th></th></tr></thead>
-    <tbody>
-      {% for source in sources %}
-      <tr>
-        <td><strong>{{ source.title }}</strong><span class="path">{{ source.source_path }}</span></td>
-        <td>{{ source.deleted_at[:19].replace('T', ' ') }}</td>
-        <td>{{ source.purge_after[:19].replace('T', ' ') }}</td>
-        <td>
-          <form action="/recycle-bin/{{ source.source_id }}/restore" method="post">
-            <button class="btn secondary" type="submit">恢复</button>
-          </form>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="4" class="empty">回收站为空。</td></tr>
-      {% endfor %}
-    </tbody>
-  </table></div>
+  <div class="lost-ledger-list">
+    {% for source in sources %}
+    <article id="source-{{ source.source_id }}" class="lost-item{% if source.is_urgent %} is-urgent{% endif %}{% if duplicate_source == source.source_id %} is-located{% endif %}">
+      <div class="lost-item-mark" aria-hidden="true">{{ loop.index }}</div>
+      <div class="lost-item-main">
+        <h3>{{ source.title }}</h3>
+        <span class="path" title="{{ source.source_path }}">{{ source.source_path }}</span>
+        <dl class="lost-item-meta">
+          <div><dt>移入时间</dt><dd>{{ source.deleted_at[:19].replace('T', ' ') }}</dd></div>
+          <div><dt>自动清理</dt><dd>{{ source.purge_after[:10] }}</dd></div>
+          <div><dt>剩余期限</dt><dd><strong>{{ source.days_remaining }} 天</strong>{% if source.is_urgent %}<em>即将清理</em>{% endif %}</dd></div>
+        </dl>
+      </div>
+      <form action="/recycle-bin/{{ source.source_id }}/restore" method="post"><button class="btn primary" type="submit">恢复资料</button></form>
+    </article>
+    {% else %}
+    <div class="lost-empty"><strong>失物登记簿是空的</strong><span>目前没有等待恢复或自动清理的资料。</span></div>
+    {% endfor %}
+  </div>
 </section>
 {% endblock %}

@@ -519,6 +519,40 @@ body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba
   .reading-desk { grid-template-columns:1fr; }.reading-toc { border-right:0; border-bottom:1px solid #ded8cc; }.reading-toc .toc > ul { columns:2; }.markdown-document { padding:26px 20px 54px; font-size:16px; }.management-banner { align-items:flex-start; flex-direction:column; }
 }
 
+/* Guild tavern lost-and-found */
+body[data-page="recycle-bin"] .workspace { background: #f3efe7; }
+.lost-alley-head { border-bottom-color: rgba(102, 42, 45, .22); }
+.lost-alley-sign { width: 82px; min-width: 82px; aspect-ratio: 1; display: grid; place-content: center; text-align: center; color: #f8f1df; background: #632d32; border: 1px solid #a77b45; box-shadow: inset 0 0 0 4px rgba(255,255,255,.06), 0 8px 20px rgba(62,32,28,.16); transform: rotate(2deg); }
+.lost-alley-sign span { font: 700 28px/1 var(--font-display); }
+.lost-alley-sign small { margin-top: 5px; font-size: 11px; }
+.duplicate-notice { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 18px; padding: 16px 18px; border-left: 4px solid #b8873f; background: #fff8e8; box-shadow: var(--shadow-sm); }
+.duplicate-notice div { display: grid; gap: 4px; }
+.duplicate-notice span { color: var(--muted); }
+.lost-ledger { padding: 22px; background: #fffdf8; border: 1px solid #d8cec0; box-shadow: 0 14px 32px rgba(58,44,35,.08); }
+.lost-ledger-list { display: grid; gap: 10px; margin-top: 18px; }
+.lost-item { display: grid; grid-template-columns: 46px minmax(0,1fr) auto; align-items: center; gap: 16px; min-height: 118px; padding: 16px; background: #fbf8f2; border: 1px solid #ddd3c6; border-left: 4px solid #315d4a; scroll-margin-top: 90px; }
+.lost-item.is-urgent { border-left-color: #a73e35; background: #fff8f4; }
+.lost-item.is-located { outline: 3px solid rgba(184,135,63,.3); border-color: #b8873f; }
+.lost-item-mark { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid #b99a68; color: #6c4e2b; background: #efe2c9; font: 700 14px/1 var(--font-display); }
+.lost-item-main { min-width: 0; }
+.lost-item h3 { margin: 0 0 5px; font-size: 17px; }
+.lost-item .path { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lost-item-meta { display: flex; flex-wrap: wrap; gap: 14px 28px; margin: 14px 0 0; }
+.lost-item-meta div { display: grid; gap: 3px; }
+.lost-item-meta dt { color: var(--muted); font-size: 11px; }
+.lost-item-meta dd { margin: 0; font-size: 13px; }
+.lost-item-meta em { margin-left: 8px; color: #a73e35; font-style: normal; font-weight: 700; }
+.lost-empty { display: grid; place-items: center; gap: 6px; min-height: 220px; color: var(--muted); border: 1px dashed #cfc3b3; }
+.lost-empty strong { color: var(--ink); }
+@media (max-width: 700px) {
+  .lost-alley-sign { display: none; }
+  .duplicate-notice { align-items: flex-start; flex-direction: column; }
+  .lost-item { grid-template-columns: 38px minmax(0,1fr); }
+  .lost-item form { grid-column: 2; }
+  .lost-item form .btn { width: 100%; }
+  .lost-item-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
