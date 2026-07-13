@@ -101,6 +101,27 @@ function Ensure-Dependencies($Python) {
   }
 }
 
+function Prepare-Database($Python) {
+  Write-Host "[Knowledge Forge] Checking database migrations..."
+  $code = @"
+from knowledge_forge import services
+from knowledge_forge.db import DATA_DIR, DB_PATH
+from knowledge_forge.legacy_migration import LegacyKnowledgeMigrator
+
+services.seed_defaults()
+migrator = LegacyKnowledgeMigrator(DB_PATH, DATA_DIR)
+if migrator.needs_migration():
+    report = migrator.migrate()
+    print(f'legacy assets migrated: {report.created_sources}')
+else:
+    print('database ready')
+"@
+  & $Python.Exe @($Python.Args + @("-c", $code))
+  if ($LASTEXITCODE -ne 0) {
+    throw "Database migration failed. The service was not started."
+  }
+}
+
 Set-Location $ScriptDir
 $Python = Resolve-Python
 Ensure-Dependencies $Python
@@ -116,6 +137,8 @@ if ($runningPort) {
   }
   exit 0
 }
+
+Prepare-Database $Python
 
 $port = Find-FreePort
 $url = Get-AppUrl $port

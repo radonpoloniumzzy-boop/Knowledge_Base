@@ -35,7 +35,7 @@
         <strong>{{ cat.count }}</strong>
       </a>
       {% else %}
-      <div class="empty">还没有索引数据，点击右上角“同步现有库”。</div>
+      <div class="empty">还没有知识资料，请先导入资料。</div>
       {% endfor %}
     </div>
   </div>
@@ -43,14 +43,14 @@
   <div class="panel">
     <div class="panel-head">
       <h2>最近任务</h2>
-      <span>处理、同步、导出记录</span>
+      <span>持久化导入任务</span>
     </div>
     <div class="activity-list">
       {% for job in jobs %}
       <div class="activity-row">
         <div>
-          <strong>{{ job.job_type }}</strong>
-          <span>{{ job.step or '-' }}</span>
+          <strong>{{ job.file_name }}</strong>
+          <span>{{ job.current_stage or '-' }}</span>
         </div>
         <em class="badge {{ job.status }}">{{ job.status }}</em>
       </div>

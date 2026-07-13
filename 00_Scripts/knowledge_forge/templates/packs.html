@@ -48,6 +48,8 @@
 {% block content %}
 {% if error == "missing_name" %}
 <div class="notice error" role="alert">请输入能力包名称后再创建。</div>
+{% elif error == "missing_artifacts" %}
+<div class="notice error" role="alert">能力包缺少必需内容，请查看对应配方的导出预检。</div>
 {% endif %}
 <section class="page-head">
   <div>
@@ -79,8 +81,17 @@
     </form>
     <form action="/packs/{{ item.pack.id }}/export" method="post">
       <label class="checkline"><input type="checkbox" name="include_low_confidence" value="true"> 包含低置信内容</label>
-      <button class="btn primary" type="submit">导出 ZIP + JSONL</button>
+      <button class="btn primary" type="submit" {% if not item.preflight.ready %}disabled{% endif %}>导出 ZIP + JSONL</button>
     </form>
+    {% if not item.preflight.ready %}
+    <div class="notice {% if error_pack_id == item.pack.id %}error{% endif %}">
+      <strong>导出预检：缺少 {{ item.preflight.missing|length }} 项</strong>
+      {% for missing in item.preflight.missing[:8] %}
+      <span>{{ missing.title }}：{{ missing.message }}</span>
+      {% endfor %}
+      {% if item.preflight.missing|length > 8 %}<span>其余 {{ item.preflight.missing|length - 8 }} 项请先补充后再导出。</span>{% endif %}
+    </div>
+    {% endif %}
     <form class="pack-delete-form" action="/packs/{{ item.pack.id }}/delete" method="post" onsubmit="return confirm('确定删除这个能力包吗？知识库文件不会被删除。');">
       <button class="btn danger" type="submit">删除能力包</button>
     </form>

@@ -370,6 +370,25 @@ def _add_legacy_knowledge_migration_tracking(conn: sqlite3.Connection) -> None:
     )
 
 
+def _contract_legacy_import_settings(conn: sqlite3.Connection) -> None:
+    legacy = conn.execute(
+        "SELECT value FROM settings WHERE key='max_workers'"
+    ).fetchone()
+    current = conn.execute(
+        "SELECT value FROM settings WHERE key='import_concurrency'"
+    ).fetchone()
+    if legacy is not None and current is None:
+        conn.execute(
+            "UPDATE settings SET key='import_concurrency', value='1', "
+            "updated_at=CURRENT_TIMESTAMP WHERE key='max_workers'"
+        )
+    elif legacy is not None:
+        conn.execute("DELETE FROM settings WHERE key='max_workers'")
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES ('legacy_setting_retired', 'max_workers')"
+        )
+
+
 DEFAULT_MIGRATIONS = (
     Migration(1, "initial-schema", _apply_initial_schema),
     Migration(2, "persistent-text-import-queue", _add_persistent_import_queue),
@@ -380,6 +399,7 @@ DEFAULT_MIGRATIONS = (
     Migration(7, "nonblocking-knowledge-enhancement", _add_nonblocking_enhancement_jobs),
     Migration(8, "knowledge-recycle-bin", _add_knowledge_recycle_bin),
     Migration(9, "legacy-knowledge-migration-tracking", _add_legacy_knowledge_migration_tracking),
+    Migration(10, "contract-legacy-import-settings", _contract_legacy_import_settings),
 )
 
 

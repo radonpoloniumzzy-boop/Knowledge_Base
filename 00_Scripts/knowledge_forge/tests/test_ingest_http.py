@@ -217,3 +217,24 @@ def test_http_recycle_and_restore_use_recycle_bin_interface(monkeypatch):
     assert recycle_bin.restored == [81]
     assert page.status_code == 200
     assert "回收站为空" in page.text
+
+
+def test_pack_export_block_redirects_to_readable_preflight(monkeypatch):
+    preflight = app_module.services.PackExportPreflight(
+        5,
+        1,
+        (app_module.services.MissingPackArtifact(7, "Lesson", "sop", "缺少 SOP"),),
+    )
+    monkeypatch.setattr(
+        app_module.services,
+        "export_pack",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            app_module.services.PackExportBlockedError(preflight)
+        ),
+    )
+    client = TestClient(app_module.app)
+
+    response = client.post("/packs/5/export", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/packs?error=missing_artifacts&pack_id=5"

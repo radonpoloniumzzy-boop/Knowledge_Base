@@ -35,9 +35,6 @@
         <span></span>
         <input name="q" value="{{ q or '' }}" placeholder="搜索文件、标签、来源路径">
       </form>
-      <form action="/scan" method="post">
-        <button class="btn secondary" type="submit">同步现有库</button>
-      </form>
       <a class="btn primary" href="/ingest">导入资料</a>
     </header>
     {% block content %}{% endblock %}

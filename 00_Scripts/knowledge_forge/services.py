@@ -9,8 +9,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from markitdown import MarkItDown
-
 from .db import DATA_DIR, ROOT_DIR, connect, init_db
 
 
@@ -18,6 +16,31 @@ CONFIG_PATH = ROOT_DIR / "00_Scripts" / "config.json"
 PACK_DIR = DATA_DIR / "Knowledge_Packs"
 UPLOAD_DIR = DATA_DIR / "Uploads"
 ARTIFACT_DIR = DATA_DIR / "Artifacts"
+
+
+@dataclass(frozen=True)
+class MissingPackArtifact:
+    file_id: int | None
+    title: str
+    artifact_type: str
+    message: str
+
+
+@dataclass(frozen=True)
+class PackExportPreflight:
+    pack_id: int
+    file_count: int
+    missing: tuple[MissingPackArtifact, ...]
+
+    @property
+    def ready(self) -> bool:
+        return self.file_count > 0 and not self.missing
+
+
+class PackExportBlockedError(ValueError):
+    def __init__(self, preflight: PackExportPreflight) -> None:
+        super().__init__("能力包缺少必需内容，请先查看导出预检。")
+        self.preflight = preflight
 
 
 ROOT_LABELS = {
@@ -35,22 +58,6 @@ ROOT_LABELS = {
     "07_Law": "法律合规",
     "08_Art": "艺术",
     "99_General": "通用知识",
-}
-
-
-SUPPORTED_EXTS = {
-    ".md",
-    ".pdf",
-    ".docx",
-    ".doc",
-    ".txt",
-    ".html",
-    ".csv",
-    ".json",
-    ".pptx",
-    ".ppt",
-    ".xlsx",
-    ".xls",
 }
 
 
@@ -311,53 +318,6 @@ def build_insight_draft(title: str, text: str) -> str:
     )
 
 
-def save_generated_artifact(conn, file_id: int, artifact_type: str, title: str, content: str, prompt_name: str) -> Path:
-    version = active_prompt_version(conn, prompt_name)
-    out_dir = ARTIFACT_DIR / str(file_id)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    base_path = out_dir / f"{artifact_type}.md"
-    if base_path.exists():
-        path = out_dir / f"{artifact_type}_{now_id()}.md"
-    else:
-        path = base_path
-    path.write_text(content, encoding="utf-8")
-    conn.execute(
-        """
-        INSERT INTO artifacts(file_id, artifact_type, path, title, prompt_name, prompt_version)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (file_id, artifact_type, str(path), title, prompt_name, version),
-    )
-    return path
-
-
-def generate_offline_artifacts(conn, file_id: int, title: str, text: str) -> None:
-    save_generated_artifact(
-        conn,
-        file_id,
-        "structure",
-        "结构化笔记",
-        build_structure_note(title, text),
-        "structure_note",
-    )
-    save_generated_artifact(
-        conn,
-        file_id,
-        "sop",
-        "SOP 草稿",
-        build_sop_draft(title, text),
-        "sop_generator",
-    )
-    save_generated_artifact(
-        conn,
-        file_id,
-        "insight",
-        "Insight 草稿",
-        build_insight_draft(title, text),
-        "insight_generator",
-    )
-
-
 def category_from_path(path: Path, root: Path) -> tuple[str, str | None]:
     try:
         rel = path.relative_to(root)
@@ -455,20 +415,6 @@ def register_file(
     return file_id
 
 
-def find_related_artifact(title: str, roots: list[tuple[str, Path]]) -> list[tuple[str, Path]]:
-    related: list[tuple[str, Path]] = []
-    title_key = re.sub(r"[_\s]+", "", title.replace("_原文", ""))[:24]
-    if not title_key:
-        return related
-    for artifact_type, root in roots:
-        for candidate in root.rglob("*.md"):
-            key = re.sub(r"[_\s]+", "", candidate.stem.replace("_原文", ""))
-            if title_key and title_key in key:
-                related.append((artifact_type, candidate))
-                break
-    return related
-
-
 def seed_defaults() -> None:
     init_db()
     with connect() as conn:
@@ -501,60 +447,7 @@ def seed_defaults() -> None:
         conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES ('server_port', '8765')")
         conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES ('offline_mode', 'true')")
         conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES ('export_dir', ?)", (str(PACK_DIR),))
-        conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES ('max_workers', '3')")
-
-
-def scan_existing_library() -> dict[str, int]:
-    seed_defaults()
-    config = load_config()
-    std = Path(config["paths"]["std_dir"])
-    sop = Path(config["paths"]["sop_dir"])
-    insight = Path(config["paths"]["insight_dir"])
-    counts = {"standard": 0, "sop": 0, "insight": 0, "chunks": 0}
-    with connect() as conn:
-        def ensure_chunks(file_id: int, path: Path, library_type: str) -> None:
-            nonlocal counts
-            if conn.execute("SELECT COUNT(*) FROM chunks WHERE file_id = ?", (file_id,)).fetchone()[0] != 0:
-                return
-            try:
-                text = path.read_text(encoding="utf-8", errors="ignore")
-            except OSError:
-                text = ""
-            for index, chunk in enumerate(chunk_text(text)):
-                conn.execute(
-                    "INSERT OR IGNORE INTO chunks(file_id, chunk_index, text, token_estimate, metadata_json) VALUES (?, ?, ?, ?, ?)",
-                    (
-                        file_id,
-                        index,
-                        chunk,
-                        estimate_tokens(chunk),
-                        json.dumps({"source_path": str(path), "library_type": library_type}, ensure_ascii=False),
-                    ),
-                )
-                counts["chunks"] += 1
-
-        for path in std.rglob("*.md"):
-            file_id = register_file(conn, path, "standard", std, "clean")
-            counts["standard"] += 1
-            related_roots = [("sop", sop), ("insight", insight)]
-            for artifact_type, artifact_path in find_related_artifact(path.stem, related_roots):
-                conn.execute(
-                    "INSERT OR IGNORE INTO artifacts(file_id, artifact_type, path, title) VALUES (?, ?, ?, ?)",
-                    (file_id, artifact_type, str(artifact_path), artifact_path.name),
-                )
-            ensure_chunks(file_id, path, "standard")
-        for path in sop.rglob("*.md"):
-            file_id = register_file(conn, path, "sop", sop, "sop")
-            ensure_chunks(file_id, path, "sop")
-            counts["sop"] += 1
-        for path in insight.rglob("*.md"):
-            file_id = register_file(conn, path, "insight", insight, "insight")
-            ensure_chunks(file_id, path, "insight")
-            counts["insight"] += 1
-        conn.execute(
-            "INSERT INTO jobs(job_type, status, step) VALUES ('scan_existing_library', 'completed', 'indexed current libraries')"
-        )
-    return counts
+        conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES ('import_concurrency', '1')")
 
 
 def dashboard_stats() -> dict[str, Any]:
@@ -578,7 +471,7 @@ def dashboard_stats() -> dict[str, Any]:
             ).fetchone()[0],
             "tags": conn.execute("SELECT COUNT(*) FROM tags").fetchone()[0],
             "packs": conn.execute("SELECT COUNT(*) FROM packs").fetchone()[0],
-            "failed": conn.execute("SELECT COUNT(*) FROM jobs WHERE status='failed'").fetchone()[0],
+            "failed": conn.execute("SELECT COUNT(*) FROM import_tasks WHERE status='needs_attention'").fetchone()[0],
             "review": conn.execute(
                 f"""
                 SELECT COUNT(*)
@@ -603,7 +496,14 @@ def dashboard_stats() -> dict[str, Any]:
             {"name": row["name"], "label": display_root_label(row["name"]), "count": row["count"]}
             for row in categories
         ]
-        jobs = conn.execute("SELECT * FROM jobs ORDER BY id DESC LIMIT 8").fetchall()
+        jobs = conn.execute(
+            """
+            SELECT filename AS file_name, status, current_stage, updated_at
+            FROM import_tasks
+            ORDER BY id DESC
+            LIMIT 8
+            """
+        ).fetchall()
         packs = conn.execute("SELECT * FROM packs ORDER BY name").fetchall()
     return {"stats": stats, "categories": categories, "jobs": jobs, "packs": packs}
 
@@ -826,7 +726,7 @@ def update_file_tag(file_id: int, tag: str, action: str) -> None:
         )
 
 
-def ingest_upload(filename: str, data: bytes) -> int:
+def accept_import_upload(filename: str, data: bytes) -> int:
     seed_defaults()
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = re.sub(r'[\\/:*?"<>|]', "_", filename)
@@ -834,147 +734,7 @@ def ingest_upload(filename: str, data: bytes) -> int:
     target.write_bytes(data)
     with connect() as conn:
         file_id = register_file(conn, target, "upload", UPLOAD_DIR, None)
-        conn.execute(
-            "INSERT INTO jobs(file_id, job_type, status, step) VALUES (?, 'ingest_upload', 'pending', 'uploaded')",
-            (file_id,),
-        )
     return file_id
-
-
-JOB_PROGRESS = {
-    "pending": 5,
-    "converting": 25,
-    "completed": 100,
-    "failed": 100,
-}
-
-JOB_STEP_PROGRESS = {
-    "uploaded": 5,
-    "convert to markdown": 25,
-    "write standard markdown": 45,
-    "offline structure/sop/insight drafts": 65,
-    "chunk text": 85,
-    "completed": 100,
-    "failed": 100,
-}
-
-
-def list_ingest_jobs(limit: int = 50) -> list[dict[str, Any]]:
-    with connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT j.*, f.title AS file_name, f.source_path
-            FROM jobs j
-            LEFT JOIN files f ON f.id = j.file_id
-            WHERE j.job_type IN ('ingest_upload', 'process_upload')
-              AND NOT EXISTS (
-                  SELECT 1 FROM jobs newer
-                  WHERE newer.file_id = j.file_id
-                    AND newer.job_type IN ('ingest_upload', 'process_upload')
-                    AND newer.id > j.id
-              )
-            ORDER BY j.id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-    output = []
-    for row in rows:
-        item = dict(row)
-        item["progress"] = JOB_STEP_PROGRESS.get(item["step"], JOB_PROGRESS.get(item["status"], 0))
-        output.append(item)
-    return output
-
-
-def process_upload(file_id: int) -> None:
-    config = load_config()
-    std_dir = Path(config["paths"]["std_dir"])
-    with connect() as conn:
-        row = conn.execute("SELECT * FROM files WHERE id=?", (file_id,)).fetchone()
-        if not row:
-            return
-        source = Path(row["source_path"])
-        job = conn.execute(
-            "SELECT id FROM jobs WHERE file_id=? AND job_type='ingest_upload' ORDER BY id DESC LIMIT 1",
-            (file_id,),
-        ).fetchone()
-        if job:
-            job_id = job["id"]
-            conn.execute(
-                "UPDATE jobs SET status='converting', step='convert to markdown', updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (job_id,),
-            )
-        else:
-            job_id = conn.execute(
-                "INSERT INTO jobs(file_id, job_type, status, step) VALUES (?, 'process_upload', 'converting', 'convert to markdown')",
-                (file_id,),
-            ).lastrowid
-        conn.commit()
-        try:
-            if source.suffix.lower() not in SUPPORTED_EXTS:
-                raise ValueError(f"暂不支持的文件类型: {source.suffix}")
-            md = MarkItDown()
-            result = md.convert(str(source))
-            text = clean_text(result.text_content or "")
-            if not text:
-                raise ValueError("转换结果为空")
-            target_dir = std_dir / "00_Pending_Review"
-            target_dir.mkdir(parents=True, exist_ok=True)
-            target_path = target_dir / f"{source.stem}.md"
-            target_path.write_text(text, encoding="utf-8")
-            conn.execute("UPDATE jobs SET status='indexing', step='write standard markdown', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
-            conn.commit()
-            new_id = register_file(conn, target_path, "standard", std_dir, "clean")
-            assign_tag(conn, "file", new_id, "00_Pending_Review", "file_strong", 0.5, "needs_review", "system", "上传后尚未人工归类")
-            conn.execute("UPDATE jobs SET status='generating', step='offline structure/sop/insight drafts', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
-            conn.commit()
-            generate_offline_artifacts(conn, new_id, normalize_title(target_path), text)
-            conn.execute("UPDATE jobs SET status='indexing', step='chunk text', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
-            conn.commit()
-            for idx, chunk in enumerate(chunk_text(text)):
-                conn.execute(
-                    "INSERT OR IGNORE INTO chunks(file_id, chunk_index, text, token_estimate, metadata_json) VALUES (?, ?, ?, ?, ?)",
-                    (new_id, idx, chunk, estimate_tokens(chunk), json.dumps({"source_upload": str(source)}, ensure_ascii=False)),
-                )
-            conn.execute("UPDATE files SET status='completed', updated_at=CURRENT_TIMESTAMP WHERE id=?", (file_id,))
-            conn.execute("UPDATE jobs SET status='completed', step='completed', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
-            conn.commit()
-        except Exception as exc:
-            conn.execute("UPDATE files SET status='failed', updated_at=CURRENT_TIMESTAMP WHERE id=?", (file_id,))
-            conn.execute(
-                "UPDATE jobs SET status='failed', step='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (str(exc), job_id),
-            )
-            conn.commit()
-
-
-def regenerate_file_artifacts(file_id: int) -> None:
-    with connect() as conn:
-        row = conn.execute("SELECT * FROM files WHERE id=?", (file_id,)).fetchone()
-        if not row:
-            raise ValueError("文件不存在")
-        source = Path(row["source_path"])
-        if not source.exists():
-            raise ValueError("源文件不存在")
-        job_id = conn.execute(
-            "INSERT INTO jobs(file_id, job_type, status, step) VALUES (?, 'regenerate_artifacts', 'generating', 'offline draft generation')",
-            (file_id,),
-        ).lastrowid
-        try:
-            if source.suffix.lower() in {".md", ".txt"}:
-                text = source.read_text(encoding="utf-8", errors="ignore")
-            else:
-                text = clean_text(MarkItDown().convert(str(source)).text_content or "")
-            if not text.strip():
-                raise ValueError("源文件内容为空")
-            generate_offline_artifacts(conn, file_id, row["title"], text)
-            conn.execute("UPDATE jobs SET status='completed', step='completed', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
-        except Exception as exc:
-            conn.execute(
-                "UPDATE jobs SET status='failed', step='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (str(exc), job_id),
-            )
-            raise
 
 
 def list_packs() -> list[dict[str, Any]]:
@@ -984,7 +744,13 @@ def list_packs() -> list[dict[str, Any]]:
         for pack in packs:
             recipe = json.loads(pack["recipe_json"])
             files = files_for_pack(pack["id"], conn=conn)
-            output.append({"pack": pack, "recipe": recipe, "file_count": len(files)})
+            preflight = _pack_export_preflight(conn, pack, files)
+            output.append({
+                "pack": pack,
+                "recipe": recipe,
+                "file_count": len(files),
+                "preflight": preflight,
+            })
         return output
 
 
@@ -1106,14 +872,62 @@ def files_for_pack(pack_id: int, conn=None, include_low_confidence: bool = False
             conn.close()
 
 
+def pack_export_preflight(
+    pack_id: int, include_low_confidence: bool = False
+) -> PackExportPreflight:
+    with connect() as conn:
+        pack = conn.execute("SELECT * FROM packs WHERE id=?", (pack_id,)).fetchone()
+        if pack is None:
+            raise ValueError("能力包不存在")
+        files = files_for_pack(
+            pack_id, conn=conn, include_low_confidence=include_low_confidence
+        )
+        return _pack_export_preflight(conn, pack, files)
+
+
+def _pack_export_preflight(conn, pack, files) -> PackExportPreflight:
+    missing: list[MissingPackArtifact] = []
+    if not files:
+        missing.append(MissingPackArtifact(None, pack["name"], "knowledge", "标签配方没有匹配到可用知识资料。"))
+    for file in files:
+        source_path = Path(file["source_path"])
+        if pack["include_source"] and not source_path.is_file():
+            missing.append(MissingPackArtifact(file["id"], file["title"], "source", "源资料文件不存在。"))
+        if file["library_type"] != "standard":
+            continue
+        for artifact_type, enabled in (
+            ("sop", bool(pack["include_sop"])),
+            ("insight", bool(pack["include_insight"])),
+        ):
+            if not enabled:
+                continue
+            row = conn.execute(
+                """
+                SELECT path FROM artifacts
+                WHERE file_id=? AND artifact_type=?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (file["id"], artifact_type),
+            ).fetchone()
+            if row is None or not Path(row["path"]).is_file():
+                missing.append(MissingPackArtifact(
+                    file["id"], file["title"], artifact_type,
+                    f"缺少可用的 {artifact_type.upper()} 产物。",
+                ))
+    return PackExportPreflight(int(pack["id"]), len(files), tuple(missing))
+
+
 def export_pack(pack_id: int, export_format: str = "zip", include_low_confidence: bool = False) -> Path:
     seed_defaults()
-    PACK_DIR.mkdir(parents=True, exist_ok=True)
     with connect() as conn:
         pack = conn.execute("SELECT * FROM packs WHERE id=?", (pack_id,)).fetchone()
         if not pack:
             raise ValueError("能力包不存在")
         files = files_for_pack(pack_id, conn=conn, include_low_confidence=include_low_confidence)
+        preflight = _pack_export_preflight(conn, pack, files)
+        if not preflight.ready:
+            raise PackExportBlockedError(preflight)
+        PACK_DIR.mkdir(parents=True, exist_ok=True)
         slug = re.sub(r"[^\w\u4e00-\u9fff-]+", "_", pack["name"]).strip("_")
         out_dir = PACK_DIR / f"{slug}_{now_id()}"
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -1126,8 +940,8 @@ def export_pack(pack_id: int, export_format: str = "zip", include_low_confidence
             "include_sop": bool(pack["include_sop"]),
             "include_insight": bool(pack["include_insight"]),
             "created_at": datetime.now().isoformat(timespec="seconds"),
+            "snapshot": [],
         }
-        (out_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         overview_lines = [f"# {pack['name']}", "", pack["description"] or "", "", f"- 文件数: {len(files)}", ""]
         jsonl_lines: list[str] = []
         source_dir = out_dir / "sources"
@@ -1147,10 +961,12 @@ def export_pack(pack_id: int, export_format: str = "zip", include_low_confidence
         for index, file in enumerate(files, 1):
             source = Path(file["source_path"])
             links = []
+            snapshot_artifacts: dict[str, str] = {}
             if pack["include_source"]:
                 source_rel = write_export_file(source_dir, index, file["title"], source, "_source")
                 if source_rel:
                     links.append(f"[原文]({source_rel})")
+                    snapshot_artifacts["source"] = source_rel
             if pack["include_sop"]:
                 sop_path = source if file["library_type"] == "sop" else None
                 if sop_path is None:
@@ -1163,6 +979,7 @@ def export_pack(pack_id: int, export_format: str = "zip", include_low_confidence
                     sop_rel = write_export_file(sop_dir, index, file["title"], sop_path, "_sop")
                     if sop_rel:
                         links.append(f"[SOP]({sop_rel})")
+                        snapshot_artifacts["sop"] = sop_rel
             if pack["include_insight"]:
                 insight_path = source if file["library_type"] == "insight" else None
                 if insight_path is None:
@@ -1175,6 +992,26 @@ def export_pack(pack_id: int, export_format: str = "zip", include_low_confidence
                     insight_rel = write_export_file(insight_dir, index, file["title"], insight_path, "_insight")
                     if insight_rel:
                         links.append(f"[Insight]({insight_rel})")
+                        snapshot_artifacts["insight"] = insight_rel
+            identity = conn.execute(
+                """
+                SELECT ks.id AS source_id, sv.id AS version_id, sv.version_number
+                FROM source_versions sv
+                JOIN knowledge_sources ks ON ks.id=sv.source_id
+                WHERE sv.standard_file_id=? AND ks.current_version_id=sv.id
+                LIMIT 1
+                """,
+                (file["id"],),
+            ).fetchone()
+            manifest["snapshot"].append({
+                "file_id": file["id"],
+                "source_id": identity["source_id"] if identity else None,
+                "version_id": identity["version_id"] if identity else None,
+                "version_number": identity["version_number"] if identity else None,
+                "title": file["title"],
+                "library_type": file["library_type"],
+                "artifacts": snapshot_artifacts,
+            })
             link_text = " · ".join(links) if links else "仅 JSONL 知识块"
             overview_lines.append(f"{index}. {file['title']} - {link_text}")
             chunks = conn.execute("SELECT * FROM chunks WHERE file_id=? ORDER BY chunk_index", (file["id"],)).fetchall()
@@ -1192,6 +1029,9 @@ def export_pack(pack_id: int, export_format: str = "zip", include_low_confidence
                         ensure_ascii=False,
                     )
                 )
+        (out_dir / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         (out_dir / "00_总览.md").write_text("\n".join(overview_lines), encoding="utf-8")
         (out_dir / "chunks.jsonl").write_text("\n".join(jsonl_lines), encoding="utf-8")
         if export_format == "zip":

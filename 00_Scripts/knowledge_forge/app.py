@@ -43,7 +43,7 @@ core_text_processor = CoreTextProcessor(
 )
 ingestion_queue = PersistentTextImportQueue(
     DB_PATH,
-    services.ingest_upload,
+    services.accept_import_upload,
     core_text_processor.process,
     completion_callback=enhancement_queue.enqueue_for_task,
     task_settled_callback=recycle_bin.finalize_pending,
@@ -111,12 +111,6 @@ def ctx(request: Request, active: str, **kwargs):
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
     return templates.TemplateResponse(request, "dashboard.html", ctx(request, "dashboard", **services.dashboard_stats()))
-
-
-@app.post("/scan")
-def scan():
-    services.scan_existing_library()
-    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/ingest", response_class=HTMLResponse)
@@ -280,17 +274,25 @@ def regenerate_enhancement(file_id: int, kind: str):
 
 
 @app.get("/packs", response_class=HTMLResponse)
-def packs(request: Request, error: str = ""):
+def packs(request: Request, error: str = "", pack_id: int = 0):
     return templates.TemplateResponse(
         request,
         "packs.html",
-        ctx(request, "packs", packs=services.list_packs(), tag_groups=services.tag_picker_groups(), error=error),
+        ctx(
+            request, "packs", packs=services.list_packs(),
+            tag_groups=services.tag_picker_groups(), error=error, error_pack_id=pack_id,
+        ),
     )
 
 
 @app.post("/packs/{pack_id}/export")
 def export_pack(pack_id: int, include_low_confidence: bool = Form(False)):
-    path = services.export_pack(pack_id, "zip", include_low_confidence)
+    try:
+        path = services.export_pack(pack_id, "zip", include_low_confidence)
+    except services.PackExportBlockedError:
+        return RedirectResponse(
+            f"/packs?error=missing_artifacts&pack_id={pack_id}", status_code=303
+        )
     return RedirectResponse(f"/download?path={path}", status_code=303)
 
 
