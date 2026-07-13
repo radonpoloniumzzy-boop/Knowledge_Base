@@ -57,6 +57,30 @@ class FakeEnhancementQueue:
         self.regenerated.append((version_id, kind))
 
 
+class FakeRecycleBin:
+    def __init__(self):
+        self.recycled = []
+        self.restored = []
+
+    def source_id_for_file(self, file_id):
+        return 81 if file_id == 7 else None
+
+    def recycle(self, source_id):
+        self.recycled.append(source_id)
+
+    def restore(self, source_id):
+        self.restored.append(source_id)
+
+    def finalize_pending(self):
+        return 0
+
+    def purge_expired(self):
+        return 0
+
+    def list_recycled(self):
+        return []
+
+
 def test_http_pause_and_resume_use_ingestion_queue_interface(monkeypatch):
     queue = FakeQueue()
     monkeypatch.setattr(app_module, "ingestion_queue", queue)
@@ -175,3 +199,21 @@ def test_targeted_enhancement_regeneration_only_resets_requested_kind(monkeypatc
 
     assert response.status_code == 303
     assert enhancements.regenerated == [(31, "insight")]
+
+
+def test_http_recycle_and_restore_use_recycle_bin_interface(monkeypatch):
+    recycle_bin = FakeRecycleBin()
+    monkeypatch.setattr(app_module, "recycle_bin", recycle_bin)
+    client = TestClient(app_module.app)
+
+    recycle = client.post("/files/7/recycle", follow_redirects=False)
+    restore = client.post("/recycle-bin/81/restore", follow_redirects=False)
+    page = client.get("/recycle-bin")
+
+    assert recycle.status_code == 303
+    assert recycle.headers["location"] == "/recycle-bin"
+    assert restore.status_code == 303
+    assert recycle_bin.recycled == [81]
+    assert recycle_bin.restored == [81]
+    assert page.status_code == 200
+    assert "回收站为空" in page.text

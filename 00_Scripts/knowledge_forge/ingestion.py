@@ -44,6 +44,12 @@ class TaskPaused(Exception):
     pass
 
 
+class RecycledDuplicateError(Exception):
+    def __init__(self, source_id: int) -> None:
+        super().__init__("相同内容位于回收站，请先恢复知识资料。")
+        self.source_id = source_id
+
+
 @dataclass(frozen=True)
 class ImportTask:
     id: int
@@ -80,6 +86,7 @@ class PersistentTextImportQueue:
         retry_delays: tuple[float, ...] = RETRY_DELAYS,
         clock: Callable[[], float] = time.time,
         completion_callback: Callable[[ImportTask], None] | None = None,
+        task_settled_callback: Callable[[], None] | None = None,
     ) -> None:
         self.database_path = Path(database_path)
         self._accept_upload = accept_upload
@@ -89,6 +96,7 @@ class PersistentTextImportQueue:
         self._retry_delays = retry_delays
         self._clock = clock
         self._completion_callback = completion_callback
+        self._task_settled_callback = task_settled_callback
         self._owner_id = uuid4().hex
         self._submit_lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -183,7 +191,10 @@ class PersistentTextImportQueue:
                 SELECT sv.standard_file_id
                 FROM import_tasks it
                 JOIN source_versions sv ON sv.id=it.version_id
+                JOIN knowledge_sources ks ON ks.id=sv.source_id
                 WHERE it.id=? AND sv.status='available'
+                  AND ks.deleted_at IS NULL
+                  AND ks.recycle_requested_at IS NULL
                 """,
                 (task_id,),
             ).fetchone()
@@ -227,15 +238,20 @@ class PersistentTextImportQueue:
         with connect(self.database_path) as conn:
             row = conn.execute(
                 """
-                SELECT it.*
+                SELECT it.id, ks.id AS source_id, ks.deleted_at, ks.recycle_requested_at
                 FROM source_versions sv
                 JOIN import_tasks it ON it.version_id=sv.id
+                JOIN knowledge_sources ks ON ks.id=sv.source_id
                 WHERE sv.content_fingerprint=?
                 ORDER BY it.id LIMIT 1
                 """,
                 (fingerprint,),
             ).fetchone()
-        return self._task_from_row(row) if row is not None else None
+        if row is None:
+            return None
+        if row["deleted_at"] is not None or row["recycle_requested_at"] is not None:
+            raise RecycledDuplicateError(int(row["source_id"]))
+        return self.get_task(int(row["id"]))
 
     @staticmethod
     def _canonical_name(filename: str) -> str:
@@ -349,6 +365,11 @@ class PersistentTextImportQueue:
                     self._completion_callback(self.get_task(task.id))
                 except Exception:
                     pass
+        if self._task_settled_callback is not None:
+            try:
+                self._task_settled_callback()
+            except Exception:
+                pass
         return True
 
     def pause(self, task_id: int) -> ImportTask:

@@ -107,7 +107,14 @@ class KnowledgeEnhancementQueue:
             return
         with connect(self.database_path) as conn:
             available = conn.execute(
-                "SELECT 1 FROM source_versions WHERE id=? AND status='available'",
+                """
+                SELECT 1
+                FROM source_versions sv
+                JOIN knowledge_sources ks ON ks.id=sv.source_id
+                WHERE sv.id=? AND sv.status='available'
+                  AND ks.deleted_at IS NULL
+                  AND ks.recycle_requested_at IS NULL
+                """,
                 (task.version_id,),
             ).fetchone()
             if not available:
@@ -147,7 +154,16 @@ class KnowledgeEnhancementQueue:
         while True:
             with connect(self.database_path) as conn:
                 row = conn.execute(
-                    "SELECT version_id, kind FROM knowledge_enhancement_jobs WHERE status='waiting' ORDER BY id LIMIT 1"
+                    """
+                    SELECT kej.version_id, kej.kind
+                    FROM knowledge_enhancement_jobs kej
+                    JOIN source_versions sv ON sv.id=kej.version_id
+                    JOIN knowledge_sources ks ON ks.id=sv.source_id
+                    WHERE kej.status='waiting'
+                      AND ks.deleted_at IS NULL
+                      AND ks.recycle_requested_at IS NULL
+                    ORDER BY kej.id LIMIT 1
+                    """
                 ).fetchone()
             if row is None:
                 return
@@ -188,8 +204,12 @@ class KnowledgeEnhancementQueue:
             version = conn.execute(
                 """
                 SELECT sv.*, f.title, f.source_path
-                FROM source_versions sv JOIN files f ON f.id=sv.standard_file_id
+                FROM source_versions sv
+                JOIN knowledge_sources ks ON ks.id=sv.source_id
+                JOIN files f ON f.id=sv.standard_file_id
                 WHERE sv.id=? AND sv.status='available'
+                  AND ks.deleted_at IS NULL
+                  AND ks.recycle_requested_at IS NULL
                 """,
                 (version_id,),
             ).fetchone()
@@ -212,6 +232,10 @@ class KnowledgeEnhancementQueue:
         outcome = self.adapter.generate(kind, version["title"], text, prompt_content)
         if outcome.not_applicable_reason:
             with connect(self.database_path) as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                if not self._version_is_active(conn, version_id):
+                    self._pause_job(conn, version_id, kind)
+                    return
                 conn.execute(
                     """
                     UPDATE knowledge_enhancement_jobs
@@ -232,6 +256,9 @@ class KnowledgeEnhancementQueue:
     ) -> None:
         with connect(self.database_path) as conn:
             conn.execute("BEGIN IMMEDIATE")
+            if not self._version_is_active(conn, version_id):
+                self._pause_job(conn, version_id, "classification")
+                return
             conn.execute(
                 """
                 DELETE FROM tag_assignments
@@ -269,27 +296,57 @@ class KnowledgeEnhancementQueue:
         temporary = target.with_suffix(".tmp")
         try:
             temporary.write_text(content, encoding="utf-8")
-            os.replace(temporary, target)
+            with connect(self.database_path) as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                if not self._version_is_active(conn, version_id):
+                    self._pause_job(conn, version_id, kind)
+                    return
+                os.replace(temporary, target)
+                artifact_id = conn.execute(
+                    """
+                    INSERT INTO artifacts(file_id, artifact_type, path, title, prompt_name, prompt_version)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (file_id, kind, str(target), title, prompt_name, prompt_version),
+                ).lastrowid
+                conn.execute(
+                    """
+                    UPDATE knowledge_enhancement_jobs
+                    SET status='completed', message=NULL, prompt_version=?, artifact_id=?,
+                        completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
+                    WHERE version_id=? AND kind=?
+                    """,
+                    (prompt_version, artifact_id, version_id, kind),
+                )
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
         finally:
             temporary.unlink(missing_ok=True)
-        with connect(self.database_path) as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            artifact_id = conn.execute(
-                """
-                INSERT INTO artifacts(file_id, artifact_type, path, title, prompt_name, prompt_version)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (file_id, kind, str(target), title, prompt_name, prompt_version),
-            ).lastrowid
-            conn.execute(
-                """
-                UPDATE knowledge_enhancement_jobs
-                SET status='completed', message=NULL, prompt_version=?, artifact_id=?,
-                    completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
-                WHERE version_id=? AND kind=?
-                """,
-                (prompt_version, artifact_id, version_id, kind),
-            )
+
+    @staticmethod
+    def _version_is_active(conn, version_id: int) -> bool:
+        return conn.execute(
+            """
+            SELECT 1
+            FROM source_versions sv
+            JOIN knowledge_sources ks ON ks.id=sv.source_id
+            WHERE sv.id=? AND ks.deleted_at IS NULL
+              AND ks.recycle_requested_at IS NULL
+            """,
+            (version_id,),
+        ).fetchone() is not None
+
+    @staticmethod
+    def _pause_job(conn, version_id: int, kind: str) -> None:
+        conn.execute(
+            """
+            UPDATE knowledge_enhancement_jobs
+            SET status='paused', updated_at=CURRENT_TIMESTAMP
+            WHERE version_id=? AND kind=?
+            """,
+            (version_id, kind),
+        )
 
     def regenerate(self, version_id: int, kind: str) -> None:
         if kind not in ENHANCEMENT_KINDS:
@@ -313,7 +370,16 @@ class KnowledgeEnhancementQueue:
         self.reconcile_available_versions()
         with connect(self.database_path) as conn:
             conn.execute(
-                "UPDATE knowledge_enhancement_jobs SET status='waiting' WHERE status='processing'"
+                """
+                UPDATE knowledge_enhancement_jobs
+                SET status='waiting'
+                WHERE status='processing'
+                  AND version_id IN (
+                      SELECT sv.id FROM source_versions sv
+                      JOIN knowledge_sources ks ON ks.id=sv.source_id
+                      WHERE ks.deleted_at IS NULL AND ks.recycle_requested_at IS NULL
+                  )
+                """
             )
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="knowledge-enhancement", daemon=True)
@@ -325,7 +391,10 @@ class KnowledgeEnhancementQueue:
                 """
                 SELECT sv.id
                 FROM source_versions sv
+                JOIN knowledge_sources ks ON ks.id=sv.source_id
                 WHERE sv.status='available'
+                  AND ks.deleted_at IS NULL
+                  AND ks.recycle_requested_at IS NULL
                   AND NOT EXISTS (
                     SELECT 1 FROM knowledge_enhancement_jobs ej WHERE ej.version_id=sv.id
                   )

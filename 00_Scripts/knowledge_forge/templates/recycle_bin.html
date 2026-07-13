@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}回收站 - 知识炼制台{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Recycle Bin</p>
+    <h1>回收站</h1>
+    <p>知识资料保留 30 天，恢复后继续使用删除前的当前版本。</p>
+  </div>
+</section>
+
+{% if duplicate_source %}
+<section class="panel">
+  <strong>相同内容已经在回收站中。</strong>
+  <span>请恢复原知识资料；系统不会静默创建重复版本。</span>
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>已删除的知识资料</h2>
+    <span>{{ sources|length }} 项</span>
+  </div>
+  <table class="data-table">
+    <thead><tr><th>资料</th><th>删除时间</th><th>自动清理时间</th><th></th></tr></thead>
+    <tbody>
+      {% for source in sources %}
+      <tr>
+        <td><strong>{{ source.title }}</strong><span class="path">{{ source.filename }}</span></td>
+        <td>{{ source.deleted_at[:19].replace('T', ' ') }}</td>
+        <td>{{ source.purge_after[:19].replace('T', ' ') }}</td>
+        <td>
+          <form action="/recycle-bin/{{ source.source_id }}/restore" method="post">
+            <button class="btn secondary" type="submit">恢复</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="empty">回收站为空。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

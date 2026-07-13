@@ -6,7 +6,9 @@ from pathlib import Path
 
 from knowledge_forge.core_processing import CoreTextProcessor
 from knowledge_forge.db import connect, init_db
-from knowledge_forge.ingestion import DeterministicImportError, PersistentTextImportQueue
+from knowledge_forge.ingestion import DeterministicImportError, PersistentTextImportQueue, RecycledDuplicateError
+from knowledge_forge.recycle_bin import KnowledgeRecycleBin
+import pytest
 from knowledge_forge import services
 
 
@@ -138,3 +140,17 @@ def test_failed_new_version_keeps_old_current_and_history_identifies_states(tmp_
         (1, True, "available"),
     ]
     assert queue.get_task(second.id).status == "needs_attention"
+
+
+def test_exact_duplicate_in_recycle_bin_requires_explicit_restore(tmp_path):
+    database_path, _, queue = make_versioned_system(tmp_path)
+    content = b"Archived lesson"
+    first = queue.submit("lesson.txt", content)
+    process_one(queue)
+    recycle_bin = KnowledgeRecycleBin(database_path, (tmp_path,))
+    recycle_bin.recycle(first.source_id)
+
+    with pytest.raises(RecycledDuplicateError) as error:
+        queue.submit("copy.txt", content)
+
+    assert error.value.source_id == first.source_id

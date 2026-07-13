@@ -11,6 +11,11 @@
     <form action="/files/{{ file.id }}/regenerate" method="post">
       <button class="btn primary" type="submit">重新生成离线草稿</button>
     </form>
+    {% if source_id %}
+    <form action="/files/{{ file.id }}/recycle" method="post">
+      <button class="btn danger" type="submit">整份资料移入回收站</button>
+    </form>
+    {% endif %}
     <a class="btn secondary" href="/library">返回知识库</a>
   </div>
 </section>
@@ -56,7 +61,7 @@
 <section class="panel version-panel">
   <div class="panel-head">
     <h2>版本历史</h2>
-    <span>当前版本保持可用，直到新版本处理成功</span>
+    <span>删除旧版本是独立操作；这里的回收操作会处理整份知识资料</span>
   </div>
   <div class="version-list">
     {% for version in version_history %}

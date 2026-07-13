@@ -63,6 +63,22 @@ DEFAULT_PROMPTS = {
 }
 
 
+def _active_file_clause(alias: str = "f") -> str:
+    return f"""
+        NOT EXISTS (
+            SELECT 1
+            FROM knowledge_sources hidden_source
+            LEFT JOIN source_versions hidden_version
+              ON hidden_version.source_id=hidden_source.id
+            WHERE (hidden_source.source_file_id={alias}.id
+                   OR hidden_version.upload_file_id={alias}.id
+                   OR hidden_version.standard_file_id={alias}.id)
+              AND (hidden_source.deleted_at IS NOT NULL
+                   OR hidden_source.recycle_requested_at IS NOT NULL)
+        )
+    """
+
+
 DEFAULT_PACKS = [
     {
         "name": "画家知识包",
@@ -538,22 +554,40 @@ def scan_existing_library() -> dict[str, int]:
 def dashboard_stats() -> dict[str, Any]:
     seed_defaults()
     with connect() as conn:
+        active = _active_file_clause("f")
+        def count_files(library_type: str | None = None) -> int:
+            type_clause = "" if library_type is None else "AND f.library_type=?"
+            params = () if library_type is None else (library_type,)
+            return int(conn.execute(
+                f"SELECT COUNT(*) FROM files f WHERE {active} {type_clause}", params
+            ).fetchone()[0])
+
         stats = {
-            "files": conn.execute("SELECT COUNT(*) FROM files").fetchone()[0],
-            "standard": conn.execute("SELECT COUNT(*) FROM files WHERE library_type='standard'").fetchone()[0],
-            "sop": conn.execute("SELECT COUNT(*) FROM files WHERE library_type='sop'").fetchone()[0],
-            "insight": conn.execute("SELECT COUNT(*) FROM files WHERE library_type='insight'").fetchone()[0],
-            "chunks": conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0],
+            "files": count_files(),
+            "standard": count_files("standard"),
+            "sop": count_files("sop"),
+            "insight": count_files("insight"),
+            "chunks": conn.execute(
+                f"SELECT COUNT(*) FROM chunks c JOIN files f ON f.id=c.file_id WHERE {active}"
+            ).fetchone()[0],
             "tags": conn.execute("SELECT COUNT(*) FROM tags").fetchone()[0],
             "packs": conn.execute("SELECT COUNT(*) FROM packs").fetchone()[0],
             "failed": conn.execute("SELECT COUNT(*) FROM jobs WHERE status='failed'").fetchone()[0],
-            "review": conn.execute("SELECT COUNT(*) FROM tag_assignments WHERE status='needs_review'").fetchone()[0],
+            "review": conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM tag_assignments ta
+                JOIN files f ON ta.target_type='file' AND ta.target_id=f.id
+                WHERE ta.status='needs_review' AND {active}
+                """
+            ).fetchone()[0],
         }
         categories = conn.execute(
             """
             SELECT COALESCE(main_category, '未分类') AS name, COUNT(*) AS count
-            FROM files
+            FROM files f
             WHERE library_type='standard'
+              AND """ + active + """
             GROUP BY COALESCE(main_category, '未分类')
             ORDER BY count DESC
             LIMIT 8
@@ -581,6 +615,8 @@ def list_files(q: str = "", category: str = "", tag: str = "", status: str = "",
               ON current_source.id=current_version.source_id
             WHERE current_version.standard_file_id=f.id
               AND current_source.current_version_id=current_version.id
+              AND current_source.deleted_at IS NULL
+              AND current_source.recycle_requested_at IS NULL
         ))
         """
     ]
@@ -645,10 +681,12 @@ def list_files(q: str = "", category: str = "", tag: str = "", status: str = "",
 
 def list_categories() -> list[Any]:
     with connect() as conn:
+        active = _active_file_clause("f")
         return conn.execute(
-            """
+            f"""
             SELECT COALESCE(main_category, '未分类') AS name, COUNT(*) AS count
-            FROM files
+            FROM files f
+            WHERE {active}
             GROUP BY COALESCE(main_category, '未分类')
             ORDER BY count DESC, name
             """
@@ -664,14 +702,19 @@ def list_category_options() -> list[dict[str, Any]]:
 
 def tag_picker_groups() -> list[dict[str, Any]]:
     with connect() as conn:
+        active = _active_file_clause("tagged_file")
         rows = conn.execute(
-            """
+            f"""
             SELECT
                 t.name,
                 COUNT(DISTINCT CASE
                     WHEN ta.target_type='file'
                      AND ta.scope='file_strong'
                      AND ta.status != 'user_rejected'
+                     AND EXISTS (
+                         SELECT 1 FROM files tagged_file
+                         WHERE tagged_file.id=ta.target_id AND {active}
+                     )
                     THEN ta.target_id
                 END) AS usage_count
             FROM tags t
@@ -724,7 +767,10 @@ def tag_picker_groups() -> list[dict[str, Any]]:
 
 def file_detail(file_id: int) -> dict[str, Any] | None:
     with connect() as conn:
-        file = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
+        active = _active_file_clause("f")
+        file = conn.execute(
+            f"SELECT f.* FROM files f WHERE f.id=? AND {active}", (file_id,)
+        ).fetchone()
         if not file:
             return None
         tags = conn.execute(
@@ -1036,6 +1082,7 @@ def files_for_pack(pack_id: int, conn=None, include_low_confidence: bool = False
               AND ta.status IN ({status_placeholders})
               AND ta.scope='file_strong'
               AND f.library_type IN ('standard', 'sop', 'insight')
+              AND {_active_file_clause('f')}
               AND NOT EXISTS (
                   SELECT 1
                   FROM source_versions historical_version
@@ -1161,9 +1208,14 @@ def export_pack(pack_id: int, export_format: str = "zip", include_low_confidence
 def settings_data() -> dict[str, Any]:
     with connect() as conn:
         prompts = conn.execute("SELECT * FROM prompts ORDER BY name, version").fetchall()
+        active = _active_file_clause("usage_file")
         tags = conn.execute(
-            """
-            SELECT t.*, (SELECT COUNT(*) FROM tag_assignments ta WHERE ta.tag_id=t.id) AS usage_count
+            f"""
+            SELECT t.*, (
+                SELECT COUNT(*) FROM tag_assignments ta
+                JOIN files usage_file ON ta.target_type='file' AND ta.target_id=usage_file.id
+                WHERE ta.tag_id=t.id AND {active}
+            ) AS usage_count
             FROM tags t
             ORDER BY usage_count DESC, name
             LIMIT 120

@@ -13,7 +13,8 @@ from . import services
 from .core_processing import CoreTextProcessor
 from .db import DATA_DIR, DB_PATH
 from .enhancement import KnowledgeEnhancementQueue, OfflineEnhancementAdapter
-from .ingestion import PersistentTextImportQueue
+from .ingestion import PersistentTextImportQueue, RecycledDuplicateError
+from .recycle_bin import KnowledgeRecycleBin
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -28,6 +29,14 @@ enhancement_queue = KnowledgeEnhancementQueue(
     services.ARTIFACT_DIR,
     OfflineEnhancementAdapter(),
 )
+recycle_bin = KnowledgeRecycleBin(
+    DB_PATH,
+    (
+        services.UPLOAD_DIR,
+        services.ARTIFACT_DIR,
+        Path(services.load_config()["paths"]["std_dir"]),
+    ),
+)
 core_text_processor = CoreTextProcessor(
     DB_PATH,
     Path(services.load_config()["paths"]["std_dir"]),
@@ -37,6 +46,7 @@ ingestion_queue = PersistentTextImportQueue(
     services.ingest_upload,
     core_text_processor.process,
     completion_callback=enhancement_queue.enqueue_for_task,
+    task_settled_callback=recycle_bin.finalize_pending,
 )
 
 
@@ -80,11 +90,14 @@ def import_job_view(task):
 def startup() -> None:
     services.seed_defaults()
     ingestion_queue.start()
+    recycle_bin.finalize_pending()
+    recycle_bin.start()
     enhancement_queue.start()
 
 
 @app.on_event("shutdown")
 def shutdown() -> None:
+    recycle_bin.stop()
     enhancement_queue.stop()
     ingestion_queue.stop()
 
@@ -132,7 +145,10 @@ async def upload(files: list[UploadFile] = File(...)):
     for uploaded in files:
         data = await uploaded.read()
         uploads.append((uploaded.filename or "upload.txt", data))
-    submitted = ingestion_queue.submit_many(uploads)
+    try:
+        submitted = ingestion_queue.submit_many(uploads)
+    except RecycledDuplicateError as exc:
+        return RedirectResponse(f"/recycle-bin?duplicate_source={exc.source_id}", status_code=303)
     if len(submitted) == 1:
         existing_file_id = ingestion_queue.knowledge_entry_for_task(submitted[0].id)
         if existing_file_id is not None:
@@ -193,7 +209,44 @@ def detail(request: Request, file_id: int):
         if current is not None and current.get("id") is not None
         else []
     )
+    data["source_id"] = recycle_bin.source_id_for_file(file_id)
     return templates.TemplateResponse(request, "file_detail.html", ctx(request, "library", **data))
+
+
+@app.post("/files/{file_id}/recycle")
+def recycle_file(file_id: int):
+    source_id = recycle_bin.source_id_for_file(file_id)
+    if source_id is None:
+        raise HTTPException(status_code=404, detail="知识资料不存在")
+    recycle_bin.recycle(source_id)
+    return RedirectResponse("/recycle-bin", status_code=303)
+
+
+@app.get("/recycle-bin", response_class=HTMLResponse)
+def recycled_sources(request: Request, duplicate_source: int = 0):
+    recycle_bin.finalize_pending()
+    recycle_bin.purge_expired()
+    return templates.TemplateResponse(
+        request,
+        "recycle_bin.html",
+        ctx(
+            request,
+            "recycle-bin",
+            sources=recycle_bin.list_recycled(),
+            duplicate_source=duplicate_source,
+        ),
+    )
+
+
+@app.post("/recycle-bin/{source_id}/restore")
+def restore_source(source_id: int):
+    try:
+        recycle_bin.restore(source_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="回收站中没有这份知识资料")
+    except ValueError:
+        raise HTTPException(status_code=410, detail="知识资料已超过 30 天保留期限")
+    return RedirectResponse("/recycle-bin", status_code=303)
 
 
 @app.post("/files/{file_id}/tags")

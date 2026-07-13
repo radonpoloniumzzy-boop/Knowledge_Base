@@ -320,6 +320,19 @@ def _add_nonblocking_enhancement_jobs(conn: sqlite3.Connection) -> None:
     )
 
 
+def _add_knowledge_recycle_bin(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        ALTER TABLE knowledge_sources ADD COLUMN recycle_requested_at TEXT;
+        ALTER TABLE knowledge_sources ADD COLUMN deleted_at TEXT;
+        ALTER TABLE knowledge_sources ADD COLUMN purge_after TEXT;
+
+        CREATE INDEX idx_knowledge_sources_recycle
+            ON knowledge_sources(deleted_at, purge_after, recycle_requested_at);
+        """
+    )
+
+
 DEFAULT_MIGRATIONS = (
     Migration(1, "initial-schema", _apply_initial_schema),
     Migration(2, "persistent-text-import-queue", _add_persistent_import_queue),
@@ -328,6 +341,7 @@ DEFAULT_MIGRATIONS = (
     Migration(5, "content-identity-and-source-versions", _add_content_identity_and_versions),
     Migration(6, "document-extraction-and-quality-gates", _add_extraction_quality_metadata),
     Migration(7, "nonblocking-knowledge-enhancement", _add_nonblocking_enhancement_jobs),
+    Migration(8, "knowledge-recycle-bin", _add_knowledge_recycle_bin),
 )
 
 
