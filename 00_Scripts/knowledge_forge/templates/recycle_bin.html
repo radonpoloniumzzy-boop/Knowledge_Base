@@ -21,7 +21,7 @@
     <h2>已删除的知识资料</h2>
     <span>{{ sources|length }} 项</span>
   </div>
-  <table class="data-table">
+  <div class="table-scroll"><table class="data-table">
     <thead><tr><th>资料</th><th>删除时间</th><th>自动清理时间</th><th></th></tr></thead>
     <tbody>
       {% for source in sources %}
@@ -39,6 +39,6 @@
       <tr><td colspan="4" class="empty">回收站为空。</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </section>
 {% endblock %}

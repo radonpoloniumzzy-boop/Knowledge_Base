@@ -23,23 +23,24 @@
       <span>{{ files|length }} 条结果</span>
     </div>
     <form class="filter-bar rich-filter-bar" action="/library" method="get">
-      <input name="q" value="{{ q or '' }}" placeholder="标题、路径或标签">
-      <select name="category" data-category-filter>
+      <input name="q" value="{{ q or '' }}" placeholder="标题、路径或标签" aria-label="搜索资料">
+      <select name="category" data-category-filter aria-label="按主分类筛选">
         <option value="">全部主分类</option>
         {% for cat in categories %}
         <option value="{{ cat.name }}" {% if category == cat.name %}selected{% endif %}>{{ cat.label }}（{{ cat.count }}）</option>
         {% endfor %}
       </select>
-      <select name="tag" data-tag-filter data-selected="{{ tag or '' }}">
+      <select name="tag" data-tag-filter data-selected="{{ tag or '' }}" aria-label="按标签筛选">
         <option value="">全部标签</option>
       </select>
-      <select name="status">
+      <select name="status" aria-label="按状态筛选">
         <option value="">全部状态</option>
-        {% for s in ['completed', 'failed', 'needs_review', 'pending'] %}
-        <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>
-        {% endfor %}
+        <option value="completed" {% if status == 'completed' %}selected{% endif %}>已完成</option>
+        <option value="failed" {% if status == 'failed' %}selected{% endif %}>处理失败</option>
+        <option value="needs_review" {% if status == 'needs_review' %}selected{% endif %}>待复核</option>
+        <option value="pending" {% if status == 'pending' %}selected{% endif %}>等待处理</option>
       </select>
-      <select name="artifact_type">
+      <select name="artifact_type" aria-label="按产物筛选">
         <option value="">全部产物</option>
         {% for a in ['clean', 'structure', 'sop', 'insight'] %}
         <option value="{{ a }}" {% if artifact_type == a %}selected{% endif %}>{{ a }}</option>
@@ -47,7 +48,7 @@
       </select>
       <button class="btn secondary" type="submit">筛选</button>
     </form>
-    <table class="data-table">
+    <div class="table-scroll"><table class="data-table library-table">
       <thead>
         <tr>
           <th>文件</th>
@@ -71,7 +72,13 @@
             <span class="pill">SOP {{ file.sop_count }}</span>
             <span class="pill">Insight {{ file.insight_count }}</span>
           </td>
-          <td><span class="badge {{ file.status }}">{{ file.status }}</span></td>
+          <td><span class="badge {{ file.status }}">
+            {% if file.status == 'completed' %}已完成
+            {% elif file.status == 'failed' %}处理失败
+            {% elif file.status == 'needs_review' %}待复核
+            {% elif file.status == 'pending' %}等待处理
+            {% else %}{{ file.status }}{% endif %}
+          </span></td>
           <td>
             <a class="link" href="/library?selected={{ file.id }}{% if q %}&q={{ q | urlencode }}{% endif %}{% if category %}&category={{ category | urlencode }}{% endif %}{% if tag %}&tag={{ tag | urlencode }}{% endif %}{% if status %}&status={{ status | urlencode }}{% endif %}{% if artifact_type %}&artifact_type={{ artifact_type | urlencode }}{% endif %}">预览</a>
             {% if file.source_id %}
@@ -85,7 +92,7 @@
         <tr><td colspan="6" class="empty">没有找到资料。可以先导入资料，或放宽筛选条件。</td></tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 
   <aside class="detail-drawer">

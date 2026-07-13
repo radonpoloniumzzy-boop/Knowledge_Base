@@ -44,6 +44,7 @@ class PackExportBlockedError(ValueError):
 
 
 ROOT_LABELS = {
+    "Uncategorized": "未归类",
     "00_Unsorted": "未归类",
     "00_Pending_Review": "待复核",
     "01_Finance": "金融",

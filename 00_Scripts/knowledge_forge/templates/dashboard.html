@@ -50,9 +50,25 @@
       <div class="activity-row">
         <div>
           <strong>{{ job.file_name }}</strong>
-          <span>{{ job.current_stage or '-' }}</span>
+          <span>
+            {% if job.current_stage == 'queued' %}等待处理
+            {% elif job.current_stage == 'extract_text' %}提取文本
+            {% elif job.current_stage == 'standard_document' %}生成标准文档
+            {% elif job.current_stage == 'quality_validation' %}质量检查
+            {% elif job.current_stage == 'chunk_indexing' %}生成知识块
+            {% elif job.current_stage == 'promote_version' %}切换当前版本
+            {% elif job.current_stage == 'completed' %}处理完成
+            {% else %}{{ job.current_stage or '-' }}{% endif %}
+          </span>
         </div>
-        <em class="badge {{ job.status }}">{{ job.status }}</em>
+        <em class="badge {{ job.status }}">
+          {% if job.status == 'waiting' %}排队中
+          {% elif job.status == 'processing' %}处理中
+          {% elif job.status == 'paused' %}已暂停
+          {% elif job.status == 'completed' %}已完成
+          {% elif job.status == 'needs_attention' %}需要处理
+          {% else %}{{ job.status }}{% endif %}
+        </em>
       </div>
       {% else %}
       <div class="empty">暂无任务记录。</div>

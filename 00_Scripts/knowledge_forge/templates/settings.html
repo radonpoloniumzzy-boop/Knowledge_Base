@@ -5,14 +5,14 @@
   <div>
     <p class="eyebrow">Settings</p>
     <h1>设置</h1>
-    <p>第一版展示配置和模板，后续会在这里编辑模型供应商、提示词和标签树。</p>
+    <p>管理模型配置、提示词版本和标签体系。</p>
   </div>
 </section>
 
 <section class="layout-two">
   <div class="panel">
     <div class="panel-head"><h2>模型与系统配置</h2><span>离线优先</span></div>
-    <table class="data-table compact">
+    <div class="table-scroll"><table class="data-table compact">
       <tbody>
       {% for row in settings %}
       <tr>
@@ -27,7 +27,7 @@
       </tr>
       {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     <p class="hint">密钥不在页面保存。请把 API key 放入环境变量，例如 `DEEPSEEK_API_KEY`。</p>
   </div>
   <div class="panel">
@@ -56,7 +56,7 @@
 {% if migration_runs %}
 <section class="panel">
   <div class="panel-head"><h2>旧资料迁移记录</h2><span>最近 5 次</span></div>
-  <table class="data-table compact">
+  <div class="table-scroll"><table class="data-table compact">
     <thead><tr><th>时间</th><th>新增资料</th><th>歧义</th><th>报告</th></tr></thead>
     <tbody>
     {% for run in migration_runs %}
@@ -68,7 +68,7 @@
     </tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </section>
 {% endif %}
 
@@ -89,7 +89,7 @@
   </div>
   <details class="history">
     <summary>查看历史版本</summary>
-    <table class="data-table">
+    <div class="table-scroll"><table class="data-table">
       <thead><tr><th>名称</th><th>版本</th><th>内容</th><th>状态</th></tr></thead>
       <tbody>
       {% for prompt in prompts %}
@@ -101,7 +101,7 @@
       </tr>
       {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </details>
 </section>
 {% endblock %}
