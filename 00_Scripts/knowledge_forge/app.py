@@ -204,7 +204,24 @@ def detail(request: Request, file_id: int):
         else []
     )
     data["source_id"] = recycle_bin.source_id_for_file(file_id)
+    data["categories"] = services.list_category_options()
     return templates.TemplateResponse(request, "file_detail.html", ctx(request, "library", **data))
+
+
+@app.post("/files/{file_id}/metadata")
+def update_file_metadata(
+    file_id: int,
+    title: str = Form(...),
+    main_category: str = Form(""),
+    sub_category: str = Form(""),
+):
+    try:
+        services.update_file_metadata(file_id, title, main_category, sub_category)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="知识资料不存在")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return RedirectResponse(f"/files/{file_id}", status_code=303)
 
 
 @app.post("/files/{file_id}/recycle")

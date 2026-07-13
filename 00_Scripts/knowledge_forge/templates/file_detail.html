@@ -127,13 +127,24 @@
 
   <div class="panel">
     <div class="panel-head">
-      <h2>文件信息</h2>
+      <h2>资料信息</h2>
       <span>{{ file.library_type }}</span>
     </div>
-    <dl class="meta-list">
-      <dt>文件名</dt><dd>{{ file.filename }}</dd>
-      <dt>主分类</dt><dd>{{ file.main_category or '未分类' }}</dd>
-      <dt>子分类</dt><dd>{{ file.sub_category or '-' }}</dd>
+    <form class="metadata-editor" action="/files/{{ file.id }}/metadata" method="post">
+      <label>标题<input name="title" value="{{ file.title }}" required></label>
+      <label>主分类
+        <select name="main_category">
+          <option value="">未分类</option>
+          {% for category in categories %}
+          <option value="{{ category.name }}" {% if category.name == file.main_category %}selected{% endif %}>{{ category.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>子分类<input name="sub_category" value="{{ file.sub_category or '' }}" placeholder="可留空"></label>
+      <button class="btn primary" type="submit">保存资料信息</button>
+    </form>
+    <dl class="meta-list metadata-summary">
+      <dt>所在地址</dt><dd class="path">{{ file.source_path }}</dd>
       <dt>大小</dt><dd>{{ (file.size_bytes / 1024)|round(1) }} KB</dd>
       <dt>状态</dt><dd>{{ file.status }}</dd>
     </dl>

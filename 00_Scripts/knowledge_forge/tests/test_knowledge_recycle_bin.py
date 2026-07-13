@@ -86,6 +86,22 @@ def test_recycle_isolates_source_from_library_stats_and_pack_then_restore_recove
     assert source["deleted_at"] is None
 
 
+def test_editing_metadata_updates_current_knowledge_record_and_recycle_display(tmp_path, monkeypatch):
+    database_path, managed_dir, source_id, file_id, _, standard_path = make_available_source(tmp_path)
+    recycle_bin = KnowledgeRecycleBin(database_path, (managed_dir,))
+    monkeypatch.setattr(services, "connect", lambda: connect(database_path))
+
+    services.update_file_metadata(file_id, "透视基础", "08_Art", "透视结构")
+    recycle_bin.recycle(source_id)
+
+    with connect(database_path) as conn:
+        file = conn.execute("SELECT title, main_category, sub_category FROM files WHERE id=?", (file_id,)).fetchone()
+    recycled = recycle_bin.list_recycled()[0]
+    assert tuple(file) == ("透视基础", "08_Art", "透视结构")
+    assert recycled.title == "透视基础"
+    assert recycled.source_path == str(standard_path)
+
+
 def test_active_import_requests_pause_and_finalizes_after_task_settles(tmp_path):
     database_path, managed_dir, source_id, file_id, _, _ = make_available_source(tmp_path)
     recycle_bin = KnowledgeRecycleBin(database_path, (managed_dir,))

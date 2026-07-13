@@ -26,7 +26,7 @@
     <tbody>
       {% for source in sources %}
       <tr>
-        <td><strong>{{ source.title }}</strong><span class="path">{{ source.filename }}</span></td>
+        <td><strong>{{ source.title }}</strong><span class="path">{{ source.source_path }}</span></td>
         <td>{{ source.deleted_at[:19].replace('T', ' ') }}</td>
         <td>{{ source.purge_after[:19].replace('T', ' ') }}</td>
         <td>

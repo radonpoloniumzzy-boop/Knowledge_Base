@@ -219,6 +219,51 @@ def test_http_recycle_and_restore_use_recycle_bin_interface(monkeypatch):
     assert "回收站为空" in page.text
 
 
+def test_file_metadata_can_be_edited_from_detail_page(monkeypatch):
+    changes = []
+    monkeypatch.setattr(
+        app_module.services,
+        "update_file_metadata",
+        lambda file_id, title, main_category, sub_category: changes.append(
+            (file_id, title, main_category, sub_category)
+        ),
+    )
+    client = TestClient(app_module.app)
+
+    response = client.post(
+        "/files/7/metadata",
+        data={"title": "透视基础", "main_category": "08_Art", "sub_category": "透视结构"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/files/7"
+    assert changes == [(7, "透视基础", "08_Art", "透视结构")]
+
+
+def test_library_shows_source_path_and_recycle_action(monkeypatch):
+    monkeypatch.setattr(
+        app_module.services,
+        "list_files",
+        lambda **_kwargs: [{
+            "id": 7, "title": "透视基础", "filename": "lesson.md",
+            "source_path": r"D:\Courses\Art\lesson.md", "main_category": "08_Art",
+            "sub_category": "透视结构", "tags": "08_Art/透视结构",
+            "sop_count": 1, "insight_count": 1, "status": "completed", "source_id": 81,
+        }],
+    )
+    monkeypatch.setattr(app_module.services, "list_category_options", lambda: [])
+    monkeypatch.setattr(app_module.services, "tag_picker_groups", lambda: [])
+    client = TestClient(app_module.app)
+
+    response = client.get("/library")
+
+    assert response.status_code == 200
+    assert r"D:\Courses\Art\lesson.md" in response.text
+    assert ">lesson.md<" not in response.text
+    assert 'action="/files/7/recycle"' in response.text
+
+
 def test_pack_export_block_redirects_to_readable_preflight(monkeypatch):
     preflight = app_module.services.PackExportPreflight(
         5,

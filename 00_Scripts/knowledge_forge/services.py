@@ -575,7 +575,12 @@ def list_files(q: str = "", category: str = "", tag: str = "", status: str = "",
             SELECT f.*,
                 (SELECT GROUP_CONCAT(t.name, '、') FROM tag_assignments ta JOIN tags t ON t.id=ta.tag_id WHERE ta.target_type='file' AND ta.target_id=f.id AND ta.scope='file_strong') AS tags,
                 (SELECT COUNT(*) FROM artifacts a WHERE a.file_id=f.id AND a.artifact_type='sop') AS sop_count,
-                (SELECT COUNT(*) FROM artifacts a WHERE a.file_id=f.id AND a.artifact_type='insight') AS insight_count
+                (SELECT COUNT(*) FROM artifacts a WHERE a.file_id=f.id AND a.artifact_type='insight') AS insight_count,
+                COALESCE(
+                    (SELECT sv.source_id FROM source_versions sv WHERE sv.standard_file_id=f.id LIMIT 1),
+                    (SELECT sv.source_id FROM source_versions sv WHERE sv.upload_file_id=f.id LIMIT 1),
+                    (SELECT ks.id FROM knowledge_sources ks WHERE ks.source_file_id=f.id LIMIT 1)
+                ) AS source_id
             FROM files f
             WHERE {' AND '.join(clauses)}
             ORDER BY f.updated_at DESC, f.id DESC
@@ -698,6 +703,51 @@ def file_detail(file_id: int) -> dict[str, Any] | None:
             text = path.read_text(encoding="utf-8", errors="ignore")[:3000]
         previews.append({"artifact": artifact, "preview": text})
     return {"file": file, "tags": tags, "artifacts": previews, "chunks": chunks}
+
+
+def update_file_metadata(
+    file_id: int,
+    title: str,
+    main_category: str = "",
+    sub_category: str = "",
+) -> None:
+    title = title.strip()
+    if not title:
+        raise ValueError("资料标题不能为空")
+    main_category = main_category.strip() or None
+    sub_category = sub_category.strip() or None
+    with connect() as conn:
+        file = conn.execute("SELECT id FROM files WHERE id=?", (file_id,)).fetchone()
+        if file is None:
+            raise KeyError(file_id)
+        source = conn.execute(
+            """
+            SELECT ks.source_file_id, current_version.standard_file_id
+            FROM knowledge_sources ks
+            LEFT JOIN source_versions matched_version ON matched_version.source_id=ks.id
+            LEFT JOIN source_versions current_version ON current_version.id=ks.current_version_id
+            WHERE ks.source_file_id=?
+               OR matched_version.upload_file_id=?
+               OR matched_version.standard_file_id=?
+            ORDER BY CASE WHEN current_version.standard_file_id=? THEN 0 ELSE 1 END
+            LIMIT 1
+            """,
+            (file_id, file_id, file_id, file_id),
+        ).fetchone()
+        target_ids = {file_id}
+        if source is not None:
+            target_ids.add(int(source["source_file_id"]))
+            if source["standard_file_id"] is not None:
+                target_ids.add(int(source["standard_file_id"]))
+        placeholders = ",".join("?" for _ in target_ids)
+        conn.execute(
+            f"""
+            UPDATE files
+            SET title=?, main_category=?, sub_category=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+            """,
+            (title, main_category, sub_category, *sorted(target_ids)),
+        )
 
 
 def update_file_tag(file_id: int, tag: str, action: str) -> None:

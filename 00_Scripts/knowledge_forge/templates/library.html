@@ -63,7 +63,7 @@
         <tr class="{{ 'selected-row' if selected == file.id else '' }}">
           <td>
             <strong>{{ file.title }}</strong>
-            <span class="path">{{ file.filename }}</span>
+            <span class="path">{{ file.source_path }}</span>
           </td>
           <td>{{ file.main_category or '未分类' }}{% if file.sub_category %}<span class="path">{{ file.sub_category }}</span>{% endif %}</td>
           <td class="tags">{{ file.tags or '待补充' }}</td>
@@ -74,6 +74,11 @@
           <td><span class="badge {{ file.status }}">{{ file.status }}</span></td>
           <td>
             <a class="link" href="/library?selected={{ file.id }}{% if q %}&q={{ q | urlencode }}{% endif %}{% if category %}&category={{ category | urlencode }}{% endif %}{% if tag %}&tag={{ tag | urlencode }}{% endif %}{% if status %}&status={{ status | urlencode }}{% endif %}{% if artifact_type %}&artifact_type={{ artifact_type | urlencode }}{% endif %}">预览</a>
+            {% if file.source_id %}
+            <form class="table-action" action="/files/{{ file.id }}/recycle" method="post" onsubmit="return confirm('确定将整份知识资料移入回收站吗？30 天内可以恢复。');">
+              <button class="link danger-link" type="submit">删除</button>
+            </form>
+            {% endif %}
           </td>
         </tr>
         {% else %}

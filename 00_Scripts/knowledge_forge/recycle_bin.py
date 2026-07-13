@@ -22,6 +22,7 @@ class RecycledSource:
     source_id: int
     title: str
     filename: str
+    source_path: str
     deleted_at: str
     purge_after: str
     current_version_id: int | None
@@ -168,7 +169,7 @@ class KnowledgeRecycleBin:
             rows = conn.execute(
                 """
                 SELECT ks.id AS source_id, ks.deleted_at, ks.purge_after,
-                       ks.current_version_id, f.title, f.filename
+                       ks.current_version_id, f.title, f.filename, f.source_path
                 FROM knowledge_sources ks
                 JOIN files f ON f.id=ks.source_file_id
                 WHERE ks.deleted_at IS NOT NULL
