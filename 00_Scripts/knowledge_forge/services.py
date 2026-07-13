@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from .db import DATA_DIR, ROOT_DIR, connect, init_db
 
@@ -89,6 +90,29 @@ def _active_file_clause(alias: str = "f") -> str:
                    OR hidden_version.standard_file_id={alias}.id)
               AND (hidden_source.deleted_at IS NOT NULL
                    OR hidden_source.recycle_requested_at IS NOT NULL)
+        )
+    """
+
+
+def _current_standard_clause(alias: str = "f") -> str:
+    return f"""
+        {alias}.library_type='standard'
+        AND {_active_file_clause(alias)}
+        AND (
+            NOT EXISTS (
+                SELECT 1 FROM source_versions known_version
+                WHERE known_version.standard_file_id={alias}.id
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM source_versions current_version
+                JOIN knowledge_sources current_source
+                  ON current_source.id=current_version.source_id
+                WHERE current_version.standard_file_id={alias}.id
+                  AND current_source.current_version_id=current_version.id
+                  AND current_source.deleted_at IS NULL
+                  AND current_source.recycle_requested_at IS NULL
+            )
         )
     """
 
@@ -451,6 +475,101 @@ def seed_defaults() -> None:
         conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES ('import_concurrency', '1')")
 
 
+def knowledge_map(root_limit: int = 6, child_limit: int = 4) -> dict[str, Any]:
+    unclassified_values = ("", "未分类", "Uncategorized", "00_Unsorted")
+    with connect() as conn:
+        current = _current_standard_clause("f")
+        placeholders = ", ".join("?" for _ in unclassified_values)
+        root_rows = conn.execute(
+            f"""
+            SELECT f.main_category AS name, COUNT(*) AS count
+            FROM files f
+            WHERE {current}
+              AND COALESCE(f.main_category, '') NOT IN ({placeholders})
+            GROUP BY f.main_category
+            ORDER BY count DESC, f.main_category
+            LIMIT ?
+            """,
+            (*unclassified_values, root_limit),
+        ).fetchall()
+        unclassified_count = int(
+            conn.execute(
+                f"""
+                SELECT COUNT(*) FROM files f
+                WHERE {current}
+                  AND COALESCE(f.main_category, '') IN ({placeholders})
+                """,
+                unclassified_values,
+            ).fetchone()[0]
+        )
+
+        nodes = []
+        for root in root_rows:
+            key = root["name"]
+            tag_rows = conn.execute(
+                f"""
+                SELECT t.name, COUNT(DISTINCT f.id) AS count
+                FROM files f
+                JOIN tag_assignments ta
+                  ON ta.target_type='file' AND ta.target_id=f.id
+                JOIN tags t ON t.id=ta.tag_id
+                WHERE {current}
+                  AND f.main_category=?
+                  AND ta.scope='file_strong'
+                  AND ta.status!='user_rejected'
+                  AND t.name LIKE ?
+                GROUP BY t.name
+                ORDER BY count DESC, t.name
+                LIMIT ?
+                """,
+                (key, f"{key}/%", child_limit),
+            ).fetchall()
+            children = [
+                {
+                    "key": row["name"],
+                    "label": display_tag_leaf(row["name"]),
+                    "count": int(row["count"]),
+                    "url": f"/library?tag={quote(row['name'])}",
+                    "source": "tag",
+                }
+                for row in tag_rows
+            ]
+            if not children:
+                fallback_rows = conn.execute(
+                    f"""
+                    SELECT f.sub_category AS name, COUNT(*) AS count
+                    FROM files f
+                    WHERE {current}
+                      AND f.main_category=?
+                      AND TRIM(COALESCE(f.sub_category, ''))!=''
+                    GROUP BY f.sub_category
+                    ORDER BY count DESC, f.sub_category
+                    LIMIT ?
+                    """,
+                    (key, child_limit),
+                ).fetchall()
+                children = [
+                    {
+                        "key": f"{key}/{row['name']}",
+                        "label": row["name"],
+                        "count": int(row["count"]),
+                        "url": f"/library?category={quote(key)}&q={quote(row['name'])}",
+                        "source": "sub_category",
+                    }
+                    for row in fallback_rows
+                ]
+            nodes.append(
+                {
+                    "key": key,
+                    "label": display_root_label(key),
+                    "count": int(root["count"]),
+                    "url": f"/library?category={quote(key)}",
+                    "children": children,
+                }
+            )
+    return {"nodes": nodes, "unclassified_count": unclassified_count}
+
+
 def dashboard_stats() -> dict[str, Any]:
     seed_defaults()
     with connect() as conn:
@@ -506,7 +625,15 @@ def dashboard_stats() -> dict[str, Any]:
             """
         ).fetchall()
         packs = conn.execute("SELECT * FROM packs ORDER BY name").fetchall()
-    return {"stats": stats, "categories": categories, "jobs": jobs, "packs": packs}
+    map_data = knowledge_map()
+    return {
+        "stats": stats,
+        "categories": categories,
+        "jobs": jobs,
+        "packs": packs,
+        "knowledge_map": map_data["nodes"],
+        "unclassified_count": map_data["unclassified_count"],
+    }
 
 
 def list_files(q: str = "", category: str = "", tag: str = "", status: str = "", artifact_type: str = "", limit: int = 80) -> list[Any]:
@@ -531,7 +658,7 @@ def list_files(q: str = "", category: str = "", tag: str = "", status: str = "",
     if q:
         clauses.append(
             """
-            (title LIKE ? OR filename LIKE ? OR source_path LIKE ?
+            (title LIKE ? OR filename LIKE ? OR source_path LIKE ? OR main_category LIKE ? OR sub_category LIKE ?
              OR EXISTS (
                 SELECT 1
                 FROM tag_assignments qta
@@ -543,7 +670,7 @@ def list_files(q: str = "", category: str = "", tag: str = "", status: str = "",
             """
         )
         like = f"%{q}%"
-        params.extend([like, like, like, like])
+        params.extend([like, like, like, like, like, like])
     if category:
         clauses.append("main_category = ?")
         params.append(category)

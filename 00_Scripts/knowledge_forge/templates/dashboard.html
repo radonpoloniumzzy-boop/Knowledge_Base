@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 {% block title %}仪表盘 - 知识炼制台{% endblock %}
 {% block content %}
-<section class="page-head">
+<section class="page-head dashboard-head">
   <div>
-    <p class="eyebrow">Workspace</p>
-    <h1>仪表盘</h1>
-    <p>查看知识库状态、最近任务和可导出的能力包。</p>
+    <p class="eyebrow">Celestial archive</p>
+    <h1>知识星盘</h1>
+    <p>从总览观察知识积累，并沿可靠的分类关系进入资料库。</p>
   </div>
   <div class="head-actions">
     <a class="btn secondary" href="/library">查看知识库</a>
-    <a class="btn primary" href="/packs">导出能力包</a>
+    <a class="btn primary" href="/packs">配置能力包</a>
   </div>
 </section>
 
-<section class="metric-grid">
+<section class="metric-grid constellation-metrics" aria-label="知识库核心指标">
   <div class="metric"><span>总文件</span><strong>{{ stats.files }}</strong></div>
   <div class="metric"><span>标准库</span><strong>{{ stats.standard }}</strong></div>
   <div class="metric"><span>SOP</span><strong>{{ stats.sop }}</strong></div>
@@ -22,107 +22,108 @@
   <div class="metric"><span>待复核</span><strong>{{ stats.review }}</strong></div>
 </section>
 
-<section class="forge-flow" aria-labelledby="forge-flow-title">
-  <div class="forge-flow-intro">
-    <p class="forge-flow-kicker">Process / 04</p>
-    <h2 id="forge-flow-title">知识炼制流</h2>
-    <span>从原始资料到可交付的知识能力</span>
+<section class="skill-strip" aria-labelledby="forge-flow-title">
+  <div class="skill-strip-intro">
+    <p class="skill-strip-kicker">Refinement / 04</p>
+    <h2 id="forge-flow-title">知识炼制技能条</h2>
+    <span>从原始资料到可携带的知识能力</span>
   </div>
-  <div class="forge-flow-track">
-    <a class="forge-step" href="/library">
-      <span class="forge-step-index">01</span>
-      <svg class="app-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
-      <span>原始资料</span>
-      <strong>{{ stats.files }}</strong>
+  <div class="skill-strip-track">
+    <a class="skill-step" href="/library">
+      <span class="skill-step-index">01</span>
+      <svg class="guild-icon" aria-hidden="true"><use href="/static/guild-icons.svg#library"></use></svg>
+      <span>原始资料</span><strong>{{ stats.files }}</strong>
     </a>
-    <a class="forge-step" href="/library">
-      <span class="forge-step-index">02</span>
-      <svg class="app-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15l2 2 4-4"/></svg>
-      <span>标准文档</span>
-      <strong>{{ stats.standard }}</strong>
+    <a class="skill-step" href="/library">
+      <span class="skill-step-index">02</span>
+      <svg class="guild-icon" aria-hidden="true"><use href="/static/guild-icons.svg#archetype-scholar"></use></svg>
+      <span>标准文档</span><strong>{{ stats.standard }}</strong>
     </a>
-    <a class="forge-step" href="/library">
-      <span class="forge-step-index">03</span>
-      <svg class="app-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m12 3-1.9 4.8L5 10l5.1 2.2L12 17l1.9-4.8L19 10l-5.1-2.2L12 3z"/><path d="m5 3-.6 1.4L3 5l1.4.6L5 7l.6-1.4L7 5l-1.4-.6L5 3zM19 17l-.9 2.1L16 20l2.1.9L19 23l.9-2.1L22 20l-2.1-.9L19 17z"/></svg>
-      <span>知识增强</span>
-      <strong>{{ stats.sop + stats.insight }}</strong>
+    <a class="skill-step" href="/library">
+      <span class="skill-step-index">03</span>
+      <svg class="guild-icon" aria-hidden="true"><use href="/static/guild-icons.svg#archetype-artificer"></use></svg>
+      <span>知识增强</span><strong>{{ stats.sop + stats.insight }}</strong>
     </a>
-    <a class="forge-step" href="/packs">
-      <span class="forge-step-index">04</span>
-      <svg class="app-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4z"/><path d="m4 12 8 4 8-4M4 17l8 4 8-4"/></svg>
-      <span>能力包</span>
-      <strong>{{ stats.packs }}</strong>
+    <a class="skill-step" href="/packs">
+      <span class="skill-step-index">04</span>
+      <svg class="guild-icon" aria-hidden="true"><use href="/static/guild-icons.svg#packs"></use></svg>
+      <span>能力包</span><strong>{{ stats.packs }}</strong>
     </a>
   </div>
 </section>
 
-<section class="layout-two">
-  <div class="panel">
-    <div class="panel-head">
-      <h2>知识域</h2>
-      <span>按标准库主分类统计</span>
+<section class="constellation-panel" aria-labelledby="constellation-title" data-constellation>
+  <div class="constellation-copy">
+    <p class="constellation-kicker">Knowledge constellation</p>
+    <h2 id="constellation-title">知识域星座关系</h2>
+    <p>悬停预览，点击锁定。展开后可直接前往对应知识范围。</p>
+    <div class="constellation-observation">
+      <span>观测提醒</span>
+      <strong>{{ unclassified_count | default(0) }}</strong>
+      <small>份资料尚未归类</small>
     </div>
+    <a class="constellation-active-link" href="/library" data-constellation-link>查看全部知识</a>
+    <button class="constellation-collapse" type="button" data-constellation-collapse>收束星图</button>
+  </div>
+  <div class="constellation-map" data-constellation-map>
+    <div class="star-field" aria-hidden="true"></div>
+    <svg class="constellation-lines" aria-hidden="true" data-constellation-lines></svg>
+    <div class="constellation-core" aria-hidden="true">
+      <span></span><i></i>
+    </div>
+    {% for node in knowledge_map | default([]) %}
+    <div class="constellation-root" data-root-wrap data-root-index="{{ loop.index0 }}">
+      <button type="button" class="root-star" data-root data-label="{{ node.label }}" data-url="{{ node.url }}" aria-expanded="false">
+        <span class="root-star-glyph" aria-hidden="true">✦</span>
+        <span class="root-star-name">{{ node.label }}</span>
+        <strong>{{ node.count }}</strong>
+      </button>
+      <div class="constellation-children" data-children>
+        {% for child in node.children %}
+        <a class="child-star" href="{{ child.url }}" data-child title="{{ child.label }}：{{ child.count }} 份资料">
+          <span aria-hidden="true"></span>
+          <em>{{ child.label }}</em>
+          <strong>{{ child.count }}</strong>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="constellation-empty">导入并分类资料后，知识星图会在这里生长。</div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="layout-two dashboard-lower">
+  <div class="panel">
+    <div class="panel-head"><h2>知识域概览</h2><span>按当前标准资料统计</span></div>
     <div class="domain-grid">
       {% for cat in categories %}
-      <a class="domain-card" href="/library?category={{ cat.name | urlencode }}">
-        <span>{{ cat.label }}</span>
-        <strong>{{ cat.count }}</strong>
-      </a>
-      {% else %}
-      <div class="empty">还没有知识资料，请先导入资料。</div>
-      {% endfor %}
+      <a class="domain-card" href="/library?category={{ cat.name | urlencode }}"><span>{{ cat.label }}</span><strong>{{ cat.count }}</strong></a>
+      {% else %}<div class="empty">还没有知识资料，请先导入资料。</div>{% endfor %}
     </div>
   </div>
-
   <div class="panel">
-    <div class="panel-head">
-      <h2>最近任务</h2>
-      <span>持久化导入任务</span>
-    </div>
+    <div class="panel-head"><h2>最近任务</h2><span>持久化导入任务</span></div>
     <div class="activity-list">
       {% for job in jobs %}
       <div class="activity-row">
-        <div>
-          <strong>{{ job.file_name }}</strong>
-          <span>
-            {% if job.current_stage == 'queued' %}等待处理
-            {% elif job.current_stage == 'extract_text' %}提取文本
-            {% elif job.current_stage == 'standard_document' %}生成标准文档
-            {% elif job.current_stage == 'quality_validation' %}质量检查
-            {% elif job.current_stage == 'chunk_indexing' %}生成知识块
-            {% elif job.current_stage == 'promote_version' %}切换当前版本
-            {% elif job.current_stage == 'completed' %}处理完成
-            {% else %}{{ job.current_stage or '-' }}{% endif %}
-          </span>
-        </div>
+        <div><strong>{{ job.file_name }}</strong><span>{{ job.current_stage or '-' }}</span></div>
         <em class="badge {{ job.status }}">
-          {% if job.status == 'waiting' %}排队中
-          {% elif job.status == 'processing' %}处理中
-          {% elif job.status == 'paused' %}已暂停
-          {% elif job.status == 'completed' %}已完成
-          {% elif job.status == 'needs_attention' %}需要处理
-          {% else %}{{ job.status }}{% endif %}
+          {% if job.status == 'waiting' %}排队中{% elif job.status == 'processing' %}处理中{% elif job.status == 'paused' %}已暂停{% elif job.status == 'completed' %}已完成{% elif job.status == 'needs_attention' %}需要处理{% else %}{{ job.status }}{% endif %}
         </em>
       </div>
-      {% else %}
-      <div class="empty">暂无任务记录。</div>
-      {% endfor %}
+      {% else %}<div class="empty">暂无任务记录。</div>{% endfor %}
     </div>
   </div>
 </section>
 
 <section class="panel">
-  <div class="panel-head">
-    <h2>能力包</h2>
-    <span>面向不同 AI 职能的知识配方</span>
-  </div>
+  <div class="panel-head"><h2>能力包</h2><span>面向不同 AI 职能的知识配方</span></div>
   <div class="pack-row">
     {% for pack in packs %}
-    <a class="pack-mini" href="/packs">
-      <strong>{{ pack.name }}</strong>
-      <span>{{ pack.description or '未填写描述' }}</span>
-    </a>
-    {% endfor %}
+    <a class="pack-mini" href="/packs?selected={{ pack.id }}"><strong>{{ pack.name }}</strong><span>{{ pack.description or '未填写描述' }}</span></a>
+    {% else %}<div class="empty">尚未建立能力包。</div>{% endfor %}
   </div>
 </section>
 {% endblock %}
