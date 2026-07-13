@@ -21,6 +21,18 @@
   --kf-shadow-2: 0 8px 24px rgba(19, 34, 29, .08);
   --kf-radius: 6px;
   --kf-sidebar-width: 220px;
+  --kf-space-1: 4px;
+  --kf-space-2: 8px;
+  --kf-space-3: 12px;
+  --kf-space-4: 16px;
+  --kf-space-5: 24px;
+  --kf-star-ink: #eef2ff;
+  --kf-star-blue: #5578d6;
+  --kf-star-violet: #7868c7;
+  --kf-alchemy-green: #1e745f;
+  --kf-alchemy-copper: #a86145;
+  --kf-pack-ink: #252734;
+  --kf-pack-brass: #b9915b;
 }
 
 * { scrollbar-color: #aebbb6 #edf1ef; }
@@ -40,7 +52,12 @@ button, a, input, select, textarea { transition: border-color 160ms ease, backgr
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .skip-link { position: fixed; z-index: 1000; top: 8px; left: 8px; padding: 10px 14px; background: var(--kf-surface); border: 1px solid var(--kf-focus); border-radius: var(--kf-radius); transform: translateY(-150%); }
 .skip-link:focus { transform: translateY(0); }
-.app-icon { width: 18px; height: 18px; flex: 0 0 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.app-icon, .guild-icon { width: 24px; height: 24px; flex: 0 0 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+.app-icon { width: 18px; height: 18px; flex-basis: 18px; }
+
+body[data-page="dashboard"] { --page-accent: var(--kf-star-violet); --page-glow: rgba(85, 120, 214, .18); }
+body[data-page="ingest"] { --page-accent: var(--kf-alchemy-green); --page-glow: rgba(168, 97, 69, .18); }
+body[data-page="packs"] { --page-accent: var(--kf-pack-brass); --page-glow: rgba(185, 145, 91, .18); }
 
 .sidebar {
   width: var(--kf-sidebar-width);

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="dashboard" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M6.3 6.3l2.1 2.1m7.2 7.2 2.1 2.1m0-11.4-2.1 2.1m-7.2 7.2-2.1 2.1"/><path d="m12 8 1.2 2.8L16 12l-2.8 1.2L12 16l-1.2-2.8L8 12l2.8-1.2L12 8Z"/></symbol>
+  <symbol id="ingest" viewBox="0 0 24 24"><path d="M7 3h10l-1.2 5.2a7 7 0 1 1-7.6 0L7 3Z"/><path d="M8.2 8.2h7.6M9 15c2-2 4 2 6 0"/></symbol>
+  <symbol id="library" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 0 4 22V5.5Z"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M8 7h8"/></symbol>
+  <symbol id="packs" viewBox="0 0 24 24"><path d="M6 8V6a6 6 0 0 1 12 0v2M4 8h16l-1 13H5L4 8Z"/><path d="M9 8v3h6V8m-6 8h6"/></symbol>
+  <symbol id="recycle" viewBox="0 0 24 24"><path d="M5 7h14l-1 14H6L5 7Zm-2 0h18M9 7V4h6v3m-5 4v6m4-6v6"/></symbol>
+  <symbol id="settings" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/><circle cx="8" cy="5" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="10" cy="19" r="2"/></symbol>
+  <symbol id="archetype-adventurer" viewBox="0 0 24 24"><path d="M5 21v-3a7 7 0 0 1 14 0v3M8 7a4 4 0 1 1 8 0c0 3-1.8 5-4 5S8 10 8 7Z"/><path d="m5 8 3-5 2 2m9 3-3-5-2 2"/></symbol>
+  <symbol id="archetype-bard" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/><path d="M9 10l10-2"/></symbol>
+  <symbol id="archetype-merchant" viewBox="0 0 24 24"><path d="M4 9h16l-1 12H5L4 9Zm3 0V6a5 5 0 0 1 10 0v3"/><path d="M8 14h8m-4-3v6"/></symbol>
+  <symbol id="archetype-ranger" viewBox="0 0 24 24"><path d="M5 21 19 3M9 3h10v10M4 8c4 0 7 3 7 7s3 7 7 7"/><path d="m4 8 4-4m-4 4 4 4"/></symbol>
+  <symbol id="archetype-artificer" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2.2 2.2m9.6 9.6L19 19m0-14-2.2 2.2M7.2 16.8 5 19"/><circle cx="12" cy="12" r="8"/></symbol>
+  <symbol id="archetype-warden" viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.5 8 11 4.6-1.5 8-6 8-11V5l-8-3Z"/><path d="M8 12h8m-4-4v8"/></symbol>
+  <symbol id="archetype-scholar" viewBox="0 0 24 24"><path d="m3 6 9-4 9 4-9 4-9-4Z"/><path d="M7 8.2V15c2.8 2 7.2 2 10 0V8.2M21 6v7"/></symbol>
+</svg>
