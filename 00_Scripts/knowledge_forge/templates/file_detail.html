@@ -15,6 +15,34 @@
   </div>
 </section>
 
+{% if version_history %}
+<section class="panel version-panel">
+  <div class="panel-head">
+    <h2>版本历史</h2>
+    <span>当前版本保持可用，直到新版本处理成功</span>
+  </div>
+  <div class="version-list">
+    {% for version in version_history %}
+    <div class="version-row {% if version.is_current %}current{% endif %}">
+      <div>
+        <strong>版本 {{ version.version_number or loop.revindex }}</strong>
+        <span>{{ version.original_filename or '历史资料' }}</span>
+      </div>
+      <div class="version-state">
+        {% if version.is_current %}<span class="badge completed">当前版本</span>
+        {% elif version.status == 'available' %}<span class="badge">历史版本</span>
+        {% elif version.task_status == 'needs_attention' %}<span class="badge needs_attention">需要处理</span>
+        {% else %}<span class="badge processing">处理中</span>{% endif %}
+        {% if version.standard_file_id %}
+        <a class="btn tiny" href="/files/{{ version.standard_file_id }}">查看</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 <section class="layout-two wide-right">
   <div class="panel">
     <div class="panel-head">

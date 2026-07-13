@@ -12,6 +12,8 @@ class FakeQueue:
         self.paused = []
         self.resumed = []
         self.tasks = []
+        self.submitted = []
+        self.entry_id = None
 
     def pause(self, task_id):
         self.paused.append(task_id)
@@ -30,6 +32,13 @@ class FakeQueue:
             "completed": 0,
             "needs_attention": len(self.tasks),
         }
+
+    def submit_many(self, uploads):
+        self.submitted.extend(uploads)
+        return [SimpleNamespace(id=23)]
+
+    def knowledge_entry_for_task(self, _task_id):
+        return self.entry_id
 
 
 def test_http_pause_and_resume_use_ingestion_queue_interface(monkeypatch):
@@ -71,3 +80,20 @@ def test_job_fragment_shows_actionable_message_without_raw_exception(monkeypatch
     assert "文档内容为空，请更换文件。" in response.text
     assert "ValueError" not in response.text
     assert "继续" in response.text
+
+
+def test_single_duplicate_upload_redirects_to_existing_knowledge_entry(monkeypatch):
+    queue = FakeQueue()
+    queue.entry_id = 42
+    monkeypatch.setattr(app_module, "ingestion_queue", queue)
+    client = TestClient(app_module.app)
+
+    response = client.post(
+        "/ingest/upload",
+        files={"files": ("copy.txt", b"same content", "text/plain")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/files/42"
+    assert queue.submitted == [("copy.txt", b"same content")]

@@ -561,7 +561,21 @@ def dashboard_stats() -> dict[str, Any]:
 
 
 def list_files(q: str = "", category: str = "", tag: str = "", status: str = "", artifact_type: str = "", limit: int = 80) -> list[Any]:
-    clauses = ["1=1"]
+    clauses = [
+        """
+        (NOT EXISTS (
+            SELECT 1 FROM source_versions visible_version
+            WHERE visible_version.standard_file_id=f.id
+        ) OR EXISTS (
+            SELECT 1
+            FROM source_versions current_version
+            JOIN knowledge_sources current_source
+              ON current_source.id=current_version.source_id
+            WHERE current_version.standard_file_id=f.id
+              AND current_source.current_version_id=current_version.id
+        ))
+        """
+    ]
     params: list[Any] = []
     if q:
         clauses.append(
@@ -1014,6 +1028,14 @@ def files_for_pack(pack_id: int, conn=None, include_low_confidence: bool = False
               AND ta.status IN ({status_placeholders})
               AND ta.scope='file_strong'
               AND f.library_type IN ('standard', 'sop', 'insight')
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM source_versions historical_version
+                  JOIN knowledge_sources historical_source
+                    ON historical_source.id=historical_version.source_id
+                  WHERE historical_version.standard_file_id=f.id
+                    AND historical_source.current_version_id != historical_version.id
+              )
             ORDER BY f.main_category, f.sub_category, f.title
             """,
             params,

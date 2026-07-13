@@ -123,7 +123,11 @@ async def upload(files: list[UploadFile] = File(...)):
     for uploaded in files:
         data = await uploaded.read()
         uploads.append((uploaded.filename or "upload.txt", data))
-    ingestion_queue.submit_many(uploads)
+    submitted = ingestion_queue.submit_many(uploads)
+    if len(submitted) == 1:
+        existing_file_id = ingestion_queue.knowledge_entry_for_task(submitted[0].id)
+        if existing_file_id is not None:
+            return RedirectResponse(f"/files/{existing_file_id}", status_code=303)
     return RedirectResponse("/ingest", status_code=303)
 
 
@@ -173,6 +177,7 @@ def detail(request: Request, file_id: int):
     data = services.file_detail(file_id)
     if not data:
         raise HTTPException(status_code=404, detail="File not found")
+    data["version_history"] = ingestion_queue.version_history_for_file(file_id)
     return templates.TemplateResponse(request, "file_detail.html", ctx(request, "library", **data))
 
 

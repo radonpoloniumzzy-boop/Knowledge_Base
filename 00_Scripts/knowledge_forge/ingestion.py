@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
+import hashlib
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
@@ -85,19 +87,58 @@ class PersistentTextImportQueue:
         self._retry_delays = retry_delays
         self._clock = clock
         self._owner_id = uuid4().hex
+        self._submit_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._heartbeat_thread: threading.Thread | None = None
 
     def submit(self, filename: str, data: bytes) -> ImportTask:
+        with self._submit_lock:
+            return self._submit_locked(filename, data)
+
+    def _submit_locked(self, filename: str, data: bytes) -> ImportTask:
+        fingerprint = hashlib.sha256(data).hexdigest()
+        existing = self._task_for_fingerprint(fingerprint)
+        if existing is not None:
+            return existing
         file_id = self._accept_upload(filename, data)
         with connect(self.database_path) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            canonical_name = self._canonical_name(filename)
+            source = conn.execute(
+                "SELECT id FROM knowledge_sources WHERE canonical_name=?",
+                (canonical_name,),
+            ).fetchone()
+            if source is None:
+                source_id = conn.execute(
+                    """
+                    INSERT INTO knowledge_sources(source_file_id, canonical_name)
+                    VALUES (?, ?)
+                    """,
+                    (file_id, canonical_name),
+                ).lastrowid
+            else:
+                source_id = source["id"]
+            version_number = conn.execute(
+                "SELECT COALESCE(MAX(version_number), 0) + 1 FROM source_versions WHERE source_id=?",
+                (source_id,),
+            ).fetchone()[0]
+            version_id = conn.execute(
+                """
+                INSERT INTO source_versions(
+                    source_id, upload_file_id, content_fingerprint,
+                    version_number, original_filename
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (source_id, file_id, fingerprint, version_number, filename),
+            ).lastrowid
             task_id = conn.execute(
                 """
-                INSERT INTO import_tasks(file_id, filename, status, current_stage)
-                VALUES (?, ?, 'waiting', 'queued')
+                INSERT INTO import_tasks(
+                    file_id, filename, status, current_stage, source_id, version_id
+                ) VALUES (?, ?, 'waiting', 'queued', ?, ?)
                 """,
-                (file_id, filename),
+                (file_id, filename, source_id, version_id),
             ).lastrowid
         return self.get_task(int(task_id))
 
@@ -131,6 +172,70 @@ class PersistentTextImportQueue:
             if row["status"] in counts:
                 counts[row["status"]] = int(row["count"])
         return counts
+
+    def knowledge_entry_for_task(self, task_id: int) -> int | None:
+        with connect(self.database_path) as conn:
+            row = conn.execute(
+                """
+                SELECT sv.standard_file_id
+                FROM import_tasks it
+                JOIN source_versions sv ON sv.id=it.version_id
+                WHERE it.id=? AND sv.status='available'
+                """,
+                (task_id,),
+            ).fetchone()
+        return int(row[0]) if row and row[0] is not None else None
+
+    def version_history_for_file(self, file_id: int) -> list[dict[str, object]]:
+        with connect(self.database_path) as conn:
+            source = conn.execute(
+                """
+                SELECT ks.id, ks.current_version_id
+                FROM knowledge_sources ks
+                JOIN source_versions sv ON sv.source_id=ks.id
+                WHERE sv.standard_file_id=? OR sv.upload_file_id=?
+                ORDER BY CASE WHEN sv.standard_file_id=? THEN 0 ELSE 1 END
+                LIMIT 1
+                """,
+                (file_id, file_id, file_id),
+            ).fetchone()
+            if source is None:
+                return []
+            rows = conn.execute(
+                """
+                SELECT sv.*, it.status AS task_status, it.user_message
+                FROM source_versions sv
+                LEFT JOIN import_tasks it ON it.version_id=sv.id
+                WHERE sv.source_id=?
+                ORDER BY sv.version_number DESC, sv.id DESC
+                """,
+                (source["id"],),
+            ).fetchall()
+        return [
+            {
+                **dict(row),
+                "is_current": row["id"] == source["current_version_id"],
+            }
+            for row in rows
+        ]
+
+    def _task_for_fingerprint(self, fingerprint: str) -> ImportTask | None:
+        with connect(self.database_path) as conn:
+            row = conn.execute(
+                """
+                SELECT it.*
+                FROM source_versions sv
+                JOIN import_tasks it ON it.version_id=sv.id
+                WHERE sv.content_fingerprint=?
+                ORDER BY it.id LIMIT 1
+                """,
+                (fingerprint,),
+            ).fetchone()
+        return self._task_from_row(row) if row is not None else None
+
+    @staticmethod
+    def _canonical_name(filename: str) -> str:
+        return unicodedata.normalize("NFKC", Path(filename).name).casefold()
 
     def acquire_worker(self) -> bool:
         now = self._clock()

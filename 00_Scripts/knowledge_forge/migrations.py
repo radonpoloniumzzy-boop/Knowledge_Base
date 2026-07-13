@@ -264,11 +264,33 @@ def _add_retry_pause_and_errors(conn: sqlite3.Connection) -> None:
     )
 
 
+def _add_content_identity_and_versions(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        ALTER TABLE knowledge_sources ADD COLUMN canonical_name TEXT;
+        ALTER TABLE source_versions ADD COLUMN content_fingerprint TEXT;
+        ALTER TABLE source_versions ADD COLUMN version_number INTEGER;
+        ALTER TABLE source_versions ADD COLUMN original_filename TEXT;
+
+        CREATE UNIQUE INDEX idx_knowledge_sources_canonical_name
+            ON knowledge_sources(canonical_name)
+            WHERE canonical_name IS NOT NULL;
+        CREATE UNIQUE INDEX idx_source_versions_fingerprint
+            ON source_versions(content_fingerprint)
+            WHERE content_fingerprint IS NOT NULL;
+        CREATE UNIQUE INDEX idx_source_versions_number
+            ON source_versions(source_id, version_number)
+            WHERE version_number IS NOT NULL;
+        """
+    )
+
+
 DEFAULT_MIGRATIONS = (
     Migration(1, "initial-schema", _apply_initial_schema),
     Migration(2, "persistent-text-import-queue", _add_persistent_import_queue),
     Migration(3, "atomic-text-core-processing", _add_atomic_core_processing),
     Migration(4, "retry-pause-and-actionable-errors", _add_retry_pause_and_errors),
+    Migration(5, "content-identity-and-source-versions", _add_content_identity_and_versions),
 )
 
 
