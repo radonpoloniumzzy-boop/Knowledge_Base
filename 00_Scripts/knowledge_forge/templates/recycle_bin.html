@@ -20,10 +20,11 @@
     <div><p class="eyebrow">Temporary Registry</p><h2>失物登记簿</h2></div>
     <span>{{ sources|length }} 份资料</span>
   </div>
+  {% if sources %}<form id="recycle-batch-form" class="batch-command-bar compact" action="/recycle-bin/batch-restore" method="post" onsubmit="return confirm('恢复选中的资料？暂停任务仍需手动继续。')"><label><input type="checkbox" data-select-recycled>选择全部暂存资料</label><button class="btn primary" type="submit">批量恢复</button></form>{% endif %}
   <div class="lost-ledger-list">
     {% for source in sources %}
     <article id="source-{{ source.source_id }}" class="lost-item{% if source.is_urgent %} is-urgent{% endif %}{% if duplicate_source == source.source_id %} is-located{% endif %}">
-      <div class="lost-item-mark" aria-hidden="true">{{ loop.index }}</div>
+      <div class="lost-item-mark"><input type="checkbox" name="selected_ids" value="{{ source.file_id }}" form="recycle-batch-form" data-recycled-item aria-label="选择 {{ source.title }}"></div>
       <div class="lost-item-main">
         <h3>{{ source.title }}</h3>
         <span class="path" title="{{ source.source_path }}">{{ source.source_path }}</span>
@@ -40,4 +41,6 @@
     {% endfor %}
   </div>
 </section>
+{% set return_to='/recycle-bin' %}{% include '_batch_jobs.html' %}
+<script>document.querySelector('[data-select-recycled]')?.addEventListener('change',e=>document.querySelectorAll('[data-recycled-item]').forEach(x=>x.checked=e.target.checked));setInterval(async()=>{const panel=document.querySelector('#batch-jobs-panel');if(!panel)return;const html=await fetch('/batch-jobs/fragment?return_to=%2Frecycle-bin').then(r=>r.text());const box=document.createElement('div');box.innerHTML=html;const next=box.firstElementChild;if(next)panel.replaceWith(next)},2000);</script>
 {% endblock %}

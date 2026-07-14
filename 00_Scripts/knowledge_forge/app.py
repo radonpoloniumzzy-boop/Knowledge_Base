@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urlencode
 from datetime import datetime
 from pathlib import Path
 
@@ -10,9 +11,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import services
+from .batch_operations import BatchOperationQueue
 from .core_processing import CoreTextProcessor
 from .db import DATA_DIR, DB_PATH
-from .enhancement import KnowledgeEnhancementQueue, OfflineEnhancementAdapter
+from .enhancement import (
+    ConfiguredEnhancementAdapter,
+    EnhancementConfigurationError,
+    EnhancementServiceError,
+    KnowledgeEnhancementQueue,
+)
 from .ingestion import PersistentTextImportQueue, RecycledDuplicateError
 from .recycle_bin import KnowledgeRecycleBin
 
@@ -27,7 +34,7 @@ app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="stati
 enhancement_queue = KnowledgeEnhancementQueue(
     DB_PATH,
     services.ARTIFACT_DIR,
-    OfflineEnhancementAdapter(),
+    ConfiguredEnhancementAdapter(DB_PATH),
 )
 recycle_bin = KnowledgeRecycleBin(
     DB_PATH,
@@ -48,6 +55,7 @@ ingestion_queue = PersistentTextImportQueue(
     completion_callback=enhancement_queue.enqueue_for_task,
     task_settled_callback=recycle_bin.finalize_pending,
 )
+batch_queue = BatchOperationQueue(DB_PATH, ingestion_queue, enhancement_queue, recycle_bin)
 
 
 def import_job_view(task):
@@ -93,10 +101,12 @@ def startup() -> None:
     recycle_bin.finalize_pending()
     recycle_bin.start()
     enhancement_queue.start()
+    batch_queue.start()
 
 
 @app.on_event("shutdown")
 def shutdown() -> None:
+    batch_queue.stop()
     recycle_bin.stop()
     enhancement_queue.stop()
     ingestion_queue.stop()
@@ -174,6 +184,7 @@ def library(
     status: str = "", artifact_type: str = "", selected: int = 0,
     domain: int = 0, page: int = 1, page_size: int = 50,
     sort: str = "updated_desc",
+    batch_error: str = "",
 ):
     selected_detail = services.file_detail(selected) if selected else None
     result = services.search_library_page(
@@ -197,8 +208,59 @@ def library(
             artifact_type=artifact_type,
             selected=selected,
             selected_detail=selected_detail,
+            batch_jobs=batch_queue.list_jobs(),
             page_size=page_size, sort=sort,
+            batch_error=batch_error,
         ),
+    )
+
+
+@app.post("/library/batch")
+def create_library_batch(
+    operation: str = Form(...),
+    selected_ids: list[int] = Form([]),
+    all_filtered: bool = Form(False),
+    q: str = Form(""), category: str = Form(""), tag: str = Form(""),
+    status: str = Form(""), artifact_type: str = Form(""), domain: int = Form(0),
+    batch_tag: str = Form(""), main_category: str = Form(""), sub_category: str = Form(""),
+    review_status: str = Form("unreviewed"), kinds: list[str] = Form([]),
+):
+    if operation in {"add_tag", "remove_tag"} and not batch_tag.strip():
+        return RedirectResponse(f"/library?{urlencode({'batch_error': '请选择或输入标签。'})}", status_code=303)
+    if operation == "set_category" and not main_category.strip():
+        return RedirectResponse(f"/library?{urlencode({'batch_error': '请选择或输入主分类。'})}", status_code=303)
+    file_ids = services.library_file_ids(q, category, tag, status, artifact_type, domain) if all_filtered else selected_ids
+    params = {
+        "tag": batch_tag.strip(), "main_category": main_category.strip(),
+        "sub_category": sub_category.strip(), "review_status": review_status,
+        "kinds": kinds or ["structure", "sop", "insight"],
+    }
+    try:
+        batch_queue.create(operation, file_ids, params, {
+            "all_filtered": all_filtered, "q": q, "category": category,
+            "tag": tag, "status": status, "artifact_type": artifact_type, "domain": domain,
+        })
+    except ValueError as exc:
+        return RedirectResponse(f"/library?{urlencode({'batch_error': str(exc)})}", status_code=303)
+    return RedirectResponse("/library", status_code=303)
+
+
+@app.post("/batch-jobs/{job_id}/{action}")
+def control_batch(job_id: int, action: str, return_to: str = Form("/library")):
+    try:
+        if action == "pause": batch_queue.pause(job_id)
+        elif action == "resume": batch_queue.resume(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Batch job not found")
+    return RedirectResponse(return_to if return_to.startswith("/") else "/library", status_code=303)
+
+
+@app.get("/batch-jobs/fragment", response_class=HTMLResponse)
+def batch_jobs_fragment(request: Request, return_to: str = "/library"):
+    return templates.TemplateResponse(
+        request,
+        "_batch_jobs.html",
+        {"request": request, "batch_jobs": batch_queue.list_jobs(), "return_to": return_to},
     )
 
 
@@ -258,8 +320,20 @@ def recycled_sources(request: Request, duplicate_source: int = 0):
             "recycle-bin",
             sources=recycle_bin.list_recycled(),
             duplicate_source=duplicate_source,
+            batch_jobs=batch_queue.list_jobs(),
         ),
     )
+
+
+@app.post("/recycle-bin/batch-restore")
+def batch_restore(selected_ids: list[int] = Form([])):
+    sources = {item.file_id: item for item in recycle_bin.list_recycled()}
+    valid_ids = [file_id for file_id in selected_ids if file_id in sources]
+    try:
+        batch_queue.create("restore", valid_ids, selection={"source": "recycle-bin"})
+    except ValueError:
+        return RedirectResponse("/recycle-bin", status_code=303)
+    return RedirectResponse("/recycle-bin", status_code=303)
 
 
 @app.post("/recycle-bin/{source_id}/restore")
@@ -288,6 +362,20 @@ def regenerate_file(file_id: int):
     for kind in ("structure", "sop", "insight"):
         enhancement_queue.regenerate(current["id"], kind)
     return RedirectResponse(f"/files/{file_id}?mode=manage", status_code=303)
+
+
+@app.post("/files/{file_id}/reprocess")
+async def reprocess_file(file_id: int, replacement: UploadFile | None = File(None)):
+    try:
+        data = await replacement.read() if replacement and replacement.filename else None
+        ingestion_queue.reprocess(
+            file_id,
+            replacement_data=data,
+            replacement_filename=replacement.filename if replacement else None,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Knowledge source not found")
+    return RedirectResponse("/ingest", status_code=303)
 
 
 @app.post("/files/{file_id}/enhancements/{kind}/regenerate")
@@ -400,7 +488,10 @@ def download(path: str):
 
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings(request: Request, section: str = "model", tag_q: str = "", tag_usage: str = "all"):
+def settings(
+    request: Request, section: str = "model", tag_q: str = "", tag_usage: str = "all",
+    model_status: str = "", model_message: str = "",
+):
     allowed = {"model", "domains", "tags", "prompts", "system"}
     section = section if section in allowed else "model"
     return templates.TemplateResponse(
@@ -412,6 +503,8 @@ def settings(request: Request, section: str = "model", tag_q: str = "", tag_usag
             section=section,
             tag_q=tag_q,
             tag_usage=tag_usage,
+            model_status=model_status,
+            model_message=model_message,
             **services.settings_data(tag_q, tag_usage),
         ),
     )
@@ -450,6 +543,33 @@ def save_model_settings(
     for key, value in values.items():
         services.update_setting(key, value)
     return RedirectResponse("/settings?section=model", status_code=303)
+
+
+@app.post("/settings/model/key")
+def save_model_key(api_key: str = Form(...)):
+    with services.connect() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key='api_key_env'").fetchone()
+    environment_name = row["value"] if row else "OPENAI_API_KEY"
+    try:
+        services.configure_api_key(environment_name, api_key)
+        values = {"section": "model", "model_status": "ok", "model_message": f"密钥已部署到 {environment_name}，不会写入知识库数据库。"}
+    except ValueError as exc:
+        values = {"section": "model", "model_status": "error", "model_message": str(exc)}
+    return RedirectResponse(f"/settings?{urlencode(values)}", status_code=303)
+
+
+@app.post("/settings/model/test")
+def test_model_connection():
+    try:
+        message = enhancement_queue.adapter.test_connection()
+        status = "ok"
+    except (EnhancementConfigurationError, EnhancementServiceError) as exc:
+        message = str(exc)
+        status = "error"
+    except Exception:
+        message = "模型连接失败，请检查配置或稍后重试。"
+        status = "error"
+    return RedirectResponse(f"/settings?{urlencode({'section': 'model', 'model_status': status, 'model_message': message})}", status_code=303)
 
 
 @app.post("/settings/domains/save")

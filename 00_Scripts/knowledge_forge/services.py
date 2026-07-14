@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import zipfile
@@ -870,6 +871,17 @@ def search_library_page(
     return LibraryPage(list(rows), total, page, page_size, page_count)
 
 
+def library_file_ids(
+    q: str = "", category: str = "", tag: str = "", status: str = "",
+    artifact_type: str = "", domain: int = 0,
+) -> list[int]:
+    clauses, params = _library_filter_parts(q, category, tag, status, artifact_type, domain)
+    where = " AND ".join(f"({clause})" for clause in clauses)
+    with connect() as conn:
+        rows = conn.execute(f"SELECT f.id FROM files f WHERE {where} ORDER BY f.id", params).fetchall()
+    return [int(row["id"]) for row in rows]
+
+
 def list_knowledge_domains(enabled_only: bool = True) -> list[dict[str, Any]]:
     with connect() as conn:
         rows = conn.execute(
@@ -1677,6 +1689,20 @@ def update_setting(key: str, value: str) -> None:
             """,
             (key, value.strip()),
         )
+
+
+def configure_api_key(environment_name: str, api_key: str) -> None:
+    environment_name = environment_name.strip()
+    api_key = api_key.strip()
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", environment_name):
+        raise ValueError("密钥环境变量名格式不正确。")
+    if not api_key:
+        raise ValueError("API key 不能为空。")
+    os.environ[environment_name] = api_key
+    if os.name == "nt":
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, environment_name, 0, winreg.REG_SZ, api_key)
 
 
 def create_or_update_tag(name: str, description: str = "") -> int:

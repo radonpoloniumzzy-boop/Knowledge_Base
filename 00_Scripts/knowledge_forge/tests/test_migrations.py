@@ -27,8 +27,8 @@ def test_new_database_records_current_schema_version(tmp_path):
         }
 
     assert report.from_version == 0
-    assert report.to_version == 12
-    assert version == 12
+    assert report.to_version == 13
+    assert version == 13
     assert {"files", "jobs", "import_tasks", "import_stage_results", "source_versions", "worker_leases", "packs", "schema_migrations"} <= tables
 
 
@@ -50,7 +50,7 @@ def test_count_mismatch_keeps_live_database_and_backup(tmp_path):
     runner = MigrationRunner(
         database_path,
         managed_data_dir,
-        migrations=(Migration(13, "destructive", destructive_migration),),
+        migrations=(Migration(14, "destructive", destructive_migration),),
     )
 
     with pytest.raises(MigrationValidationError):
@@ -58,7 +58,7 @@ def test_count_mismatch_keeps_live_database_and_backup(tmp_path):
 
     with sqlite3.connect(database_path) as conn:
         assert conn.execute("SELECT COUNT(*) FROM files").fetchone()[0] == 1
-        assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 12
+        assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 13
     assert len(list((managed_data_dir / "Backups").glob("*.db"))) == 1
 
 
@@ -100,12 +100,12 @@ def test_existing_database_is_backed_up_preserved_and_migrated_once(tmp_path):
     assert first.backup_path is not None and first.backup_path.exists()
     assert first.before_counts["files"] == 1
     assert first.after_counts["files"] == 1
-    assert first.applied_versions == (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+    assert first.applied_versions == (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
     assert second.applied_versions == ()
     assert second.backup_path is None
     with sqlite3.connect(database_path) as conn:
         assert conn.execute("SELECT COUNT(*) FROM files").fetchone()[0] == 1
-        assert conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 12
+        assert conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 13
 
 
 def test_schema_10_replaces_legacy_worker_setting_without_changing_record_count(tmp_path):
@@ -120,7 +120,7 @@ def test_schema_10_replaces_legacy_worker_setting_without_changing_record_count(
 
     with closing(sqlite3.connect(database_path)) as conn:
         settings = dict(conn.execute("SELECT key, value FROM settings"))
-    assert report.applied_versions == (10, 11, 12)
+    assert report.applied_versions == (10, 11, 12, 13)
     assert report.before_counts["settings"] == report.after_counts["settings"] == 1
     assert settings == {"import_concurrency": "1"}
 
@@ -143,7 +143,7 @@ def test_schema_11_assigns_stable_pack_identity_without_changing_counts(tmp_path
         rows = conn.execute(
             "SELECT emblem_color, archetype_key FROM packs ORDER BY id"
         ).fetchall()
-    assert first.applied_versions == (11, 12)
+    assert first.applied_versions == (11, 12, 13)
     assert first.before_counts["packs"] == first.after_counts["packs"] == 6
     assert second.applied_versions == ()
     assert [row[0] for row in rows] == [
@@ -166,6 +166,6 @@ def test_schema_12_seeds_domains_and_merges_intel_rules(tmp_path):
             (art_id,),
         )}
         protected = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-    assert report.applied_versions == (12,)
+    assert report.applied_versions == (12, 13)
     assert {"08_Art", "08_Art_Intel"}.issubset(rules)
     assert protected == 0

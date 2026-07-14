@@ -20,6 +20,7 @@ class RecycleResult:
 @dataclass(frozen=True)
 class RecycledSource:
     source_id: int
+    file_id: int
     title: str
     filename: str
     source_path: str
@@ -170,7 +171,7 @@ class KnowledgeRecycleBin:
         with connect(self.database_path) as conn:
             rows = conn.execute(
                 """
-                SELECT ks.id AS source_id, ks.deleted_at, ks.purge_after,
+                SELECT ks.id AS source_id, ks.source_file_id AS file_id, ks.deleted_at, ks.purge_after,
                        ks.current_version_id, f.title, f.filename, f.source_path
                 FROM knowledge_sources ks
                 JOIN files f ON f.id=ks.source_file_id

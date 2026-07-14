@@ -15,6 +15,7 @@
   <section class="settings-task">
   {% if section == 'model' %}
     <div class="task-heading"><p class="eyebrow">Model Dispatch</p><h2>模型配置</h2><span>密钥只从环境变量读取</span></div>
+    {% if model_message %}<div class="model-status {{ model_status }}" role="status">{{ model_message }}</div>{% endif %}
     <form class="model-fields" action="/settings/model" method="post">
       <label>供应商<input name="active_provider" value="{{ setting_values.get('active_provider', '') }}"></label>
       <label>API 地址<input type="url" name="api_base_url" value="{{ setting_values.get('api_base_url', '') }}"></label>
@@ -23,6 +24,7 @@
       <label class="switch-row"><input type="checkbox" name="offline_mode"{% if setting_values.get('offline_mode') == 'true' %} checked{% endif %}><span>离线模式</span><small>启用时不调用远程模型</small></label>
       <button class="btn primary" type="submit">保存模型配置</button>
     </form>
+    <div class="model-key-tools"><form action="/settings/model/key" method="post" autocomplete="off"><label>部署 API key<input type="password" name="api_key" value="" required autocomplete="new-password" placeholder="密钥不会保存到数据库"></label><button class="btn secondary" type="submit">部署密钥</button></form><form class="model-test" action="/settings/model/test" method="post"><button class="btn secondary" type="submit">测试模型连接</button></form></div>
   {% elif section == 'domains' %}
     <div class="task-heading"><p class="eyebrow">Archive Shelves</p><h2>知识域</h2><span>仅影响书架导航，不删除知识资料</span></div>
     <details class="domain-editor new-domain"><summary>新增知识域</summary>{{ domain_form(None, main_categories, tag_roots, domain_accents) }}</details>

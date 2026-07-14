@@ -152,5 +152,25 @@ def test_exact_duplicate_in_recycle_bin_requires_explicit_restore(tmp_path):
 
     with pytest.raises(RecycledDuplicateError) as error:
         queue.submit("copy.txt", content)
-
     assert error.value.source_id == first.source_id
+
+
+def test_explicit_reprocess_creates_candidate_version_even_when_content_is_unchanged(tmp_path):
+    database_path, _, queue = make_versioned_system(tmp_path)
+    first = queue.submit("course.md", b"Stable source content")
+    process_one(queue)
+    file_id = queue.knowledge_entry_for_task(first.id)
+
+    second = queue.reprocess(file_id)
+
+    assert second.id != first.id
+    assert second.source_id == first.source_id
+    with connect(database_path) as conn:
+        versions = conn.execute(
+            "SELECT version_number, content_fingerprint, status, reprocess_of_version_id FROM source_versions WHERE source_id=? ORDER BY version_number",
+            (first.source_id,),
+        ).fetchall()
+    assert [row["version_number"] for row in versions] == [1, 2]
+    assert versions[1]["content_fingerprint"] is None
+    assert versions[1]["reprocess_of_version_id"] == first.version_id
+    assert versions[1]["status"] == "processing"

@@ -89,7 +89,7 @@ function Quote-Arg($Value) {
 }
 
 function Ensure-Dependencies($Python) {
-  $check = "import importlib.util,sys; mods=['fastapi','uvicorn','jinja2','multipart','markitdown']; missing=[m for m in mods if importlib.util.find_spec(m) is None]; print(','.join(missing)); sys.exit(1 if missing else 0)"
+  $check = "import importlib.util,sys; mods=['fastapi','uvicorn','jinja2','multipart','markitdown','httpx']; missing=[m for m in mods if importlib.util.find_spec(m) is None]; print(','.join(missing)); sys.exit(1 if missing else 0)"
   $output = & $Python.Exe @($Python.Args + @("-c", $check)) 2>&1
   if ($LASTEXITCODE -ne 0) {
     Write-Host "[Knowledge Forge] Missing packages: $output"

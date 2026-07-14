@@ -156,6 +156,56 @@ class PersistentTextImportQueue:
     def submit_many(self, uploads: Iterable[tuple[str, bytes]]) -> list[ImportTask]:
         return [self.submit(filename, data) for filename, data in uploads]
 
+    def reprocess(
+        self,
+        file_id: int,
+        replacement_data: bytes | None = None,
+        replacement_filename: str | None = None,
+    ) -> ImportTask:
+        """Create an explicit candidate version, bypassing normal duplicate reuse."""
+        with self._submit_lock, connect(self.database_path) as conn:
+            source = conn.execute(
+                """
+                SELECT ks.id AS source_id, sv.id AS version_id, sv.upload_file_id, sv.original_filename,
+                       upload.source_path
+                FROM knowledge_sources ks
+                JOIN source_versions sv ON sv.source_id=ks.id
+                JOIN files upload ON upload.id=sv.upload_file_id
+                WHERE (sv.standard_file_id=? OR sv.upload_file_id=?)
+                  AND ks.deleted_at IS NULL AND ks.recycle_requested_at IS NULL
+                ORDER BY CASE WHEN ks.current_version_id=sv.id THEN 0 ELSE 1 END, sv.id DESC
+                LIMIT 1
+                """,
+                (file_id, file_id),
+            ).fetchone()
+            if source is None:
+                raise KeyError(file_id)
+            filename = replacement_filename or source["original_filename"] or Path(source["source_path"]).name
+            data = replacement_data if replacement_data is not None else Path(source["source_path"]).read_bytes()
+            upload_file_id = self._accept_upload(filename, data)
+            conn.execute("BEGIN IMMEDIATE")
+            version_number = conn.execute(
+                "SELECT COALESCE(MAX(version_number), 0) + 1 FROM source_versions WHERE source_id=?",
+                (source["source_id"],),
+            ).fetchone()[0]
+            version_id = conn.execute(
+                """
+                INSERT INTO source_versions(
+                    source_id, upload_file_id, content_fingerprint,
+                    version_number, original_filename, reprocess_of_version_id
+                ) VALUES (?, ?, NULL, ?, ?, ?)
+                """,
+                (source["source_id"], upload_file_id, version_number, filename, source["version_id"]),
+            ).lastrowid
+            task_id = conn.execute(
+                """
+                INSERT INTO import_tasks(file_id, filename, status, current_stage, source_id, version_id)
+                VALUES (?, ?, 'waiting', 'queued', ?, ?)
+                """,
+                (upload_file_id, filename, source["source_id"], version_id),
+            ).lastrowid
+        return self.get_task(int(task_id))
+
     def get_task(self, task_id: int) -> ImportTask:
         with connect(self.database_path) as conn:
             row = conn.execute("SELECT * FROM import_tasks WHERE id=?", (task_id,)).fetchone()

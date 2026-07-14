@@ -7,6 +7,7 @@ page={{ target_page }}&page_size={{ library_page.page_size }}&sort={{ sort }}{% 
 <section class="page-head archive-head">
   <div><p class="eyebrow">Arcane archive</p><h1>魔法档案馆</h1><p>通过知识域找到书架，再用目录筛选定位具体资料。</p></div>
 </section>
+{% if batch_error %}<div class="model-status error" role="alert">{{ batch_error }}</div>{% endif %}
 
 <section class="archive-shelves" aria-label="知识域书柜">
   <a class="archive-shelf {{ 'active' if not domain else '' }}" href="/library" style="--shelf-accent:#7b6753"><span>总馆目录</span><strong>{{ library_page.total if not domain else '全部' }}</strong></a>
@@ -34,15 +35,26 @@ page={{ target_page }}&page_size={{ library_page.page_size }}&sort={{ sort }}{% 
       <select name="page_size" aria-label="每页数量">{% for size in [25,50,100] %}<option value="{{ size }}" {% if library_page.page_size==size %}selected{% endif %}>每页 {{ size }}</option>{% endfor %}</select>
       <button class="btn secondary" type="submit">筛选</button>
     </form>
+    <form id="library-batch-form" class="batch-command-bar" action="/library/batch" method="post" onsubmit="return confirmBatch(this)">
+      <input type="hidden" name="q" value="{{ q or '' }}"><input type="hidden" name="category" value="{{ category or '' }}"><input type="hidden" name="tag" value="{{ tag or '' }}"><input type="hidden" name="status" value="{{ status or '' }}"><input type="hidden" name="artifact_type" value="{{ artifact_type or '' }}"><input type="hidden" name="domain" value="{{ domain or 0 }}">
+      <label class="batch-all"><input type="checkbox" name="all_filtered" value="true">选择当前筛选全部 {{ library_page.total }} 项</label>
+      <select name="operation" required data-batch-operation><option value="">选择批量操作</option><option value="add_tag">增加标签</option><option value="remove_tag">移除标签</option><option value="set_category">修改分类</option><option value="set_review">修改复核状态</option><option value="regenerate">重新生成 AI 产物</option><option value="reprocess">完整重新炼制</option><option value="recycle">移入回收站</option></select>
+      <input name="batch_tag" list="batch-tag-options" placeholder="要增加或移除的标签"><input name="main_category" list="batch-category-options" placeholder="主分类"><input name="sub_category" placeholder="子分类">
+      <select name="review_status"><option value="reviewed">标记已复核</option><option value="unreviewed">标记未复核</option></select>
+      <div class="batch-kinds"><label><input type="checkbox" name="kinds" value="structure" checked>Structure</label><label><input type="checkbox" name="kinds" value="sop" checked>SOP</label><label><input type="checkbox" name="kinds" value="insight" checked>Insight</label></div>
+      <button class="btn primary" type="submit">加入批量队列</button>
+    </form>
+    <datalist id="batch-category-options">{% for item in categories %}<option value="{{ item.name }}">{{ item.label }}</option>{% endfor %}</datalist><datalist id="batch-tag-options">{% for group in tag_groups %}<option value="{{ group.value }}">{{ group.label }}</option>{% for child in group.children %}<option value="{{ child.value }}">{{ child.label }}</option>{% endfor %}{% endfor %}</datalist>
     <div class="table-scroll"><table class="data-table library-table archive-table">
-      <thead><tr><th>资料</th><th>分类</th><th>强标签</th><th>产物</th><th>状态</th><th></th></tr></thead>
+      <thead><tr><th><input type="checkbox" data-select-page aria-label="选择当前页"></th><th>资料</th><th>分类</th><th>强标签</th><th>产物</th><th>状态</th><th></th></tr></thead>
       <tbody>{% for file in files %}<tr class="{{ 'selected-row' if selected==file.id else '' }}">
+        <td><input type="checkbox" name="selected_ids" value="{{ file.id }}" form="library-batch-form" data-batch-item aria-label="选择 {{ file.title }}"></td>
         <td><strong>{{ file.title }}</strong><span class="path">{{ file.source_path }}</span></td>
         <td>{{ file.main_category or '未分类' }}{% if file.sub_category %}<span class="path">{{ file.sub_category }}</span>{% endif %}</td>
         <td class="tags">{{ file.tags or '待补充' }}</td><td><span class="pill">SOP {{ file.sop_count }}</span><span class="pill">Insight {{ file.insight_count }}</span></td>
-        <td><span class="badge {{ file.status }}">{% if file.status=='completed' %}已完成{% elif file.status=='needs_review' %}待复核{% elif file.status=='pending' %}等待处理{% else %}{{ file.status }}{% endif %}</span></td>
+        <td><span class="badge {{ file.status }}">{% if file.status=='completed' %}已完成{% elif file.status=='needs_review' %}待复核{% elif file.status=='pending' %}等待处理{% else %}{{ file.status }}{% endif %}</span>{% if file.review_status=='reviewed' %}<span class="reviewed-mark">已复核</span>{% endif %}</td>
         <td><a class="link" href="/library?{{ params(target_selected=file.id) }}">预览</a>{% if file.source_id %}<form class="table-action" action="/files/{{ file.id }}/recycle" method="post" onsubmit="return confirm('确定将整份知识资料移入回收站吗？30 天内可以恢复。');"><button class="link danger-link" type="submit">删除</button></form>{% endif %}</td>
-      </tr>{% else %}<tr><td colspan="6" class="empty">没有找到资料。可以放宽筛选条件。</td></tr>{% endfor %}</tbody>
+      </tr>{% else %}<tr><td colspan="7" class="empty">没有找到资料。可以放宽筛选条件。</td></tr>{% endfor %}</tbody>
     </table></div>
     <nav class="catalog-pagination" aria-label="资料分页">
       <a class="btn tiny" href="/library?{{ params(1) }}" {% if library_page.page==1 %}aria-disabled="true"{% endif %}>首页</a>
@@ -54,8 +66,15 @@ page={{ target_page }}&page_size={{ library_page.page_size }}&sort={{ sort }}{% 
   </div>
   <aside class="detail-drawer archive-drawer">{% if selected_detail %}<div class="panel-head"><h2>抽取预览</h2><a class="link" href="/files/{{ selected_detail.file.id }}">进入阅读台</a></div><h3>{{ selected_detail.file.title }}</h3><p class="path">{{ selected_detail.file.source_path }}</p><div class="drawer-tags">{% for item in selected_detail.tags[:8] %}<span>{{ item.name }}</span>{% endfor %}</div><dl class="meta-list"><dt>类型</dt><dd>{{ selected_detail.file.library_type }}</dd><dt>分类</dt><dd>{{ selected_detail.file.main_category or '未分类' }}</dd><dt>状态</dt><dd>{{ selected_detail.file.status }}</dd></dl>{% else %}<div class="empty">选择“预览”，这里会像抽出一本档案一样显示摘要。</div>{% endif %}</aside>
 </section>
+{% set return_to='/library' %}{% include '_batch_jobs.html' %}
 <script>window.KF_TAG_GROUPS={{ tag_groups|tojson }};</script>
 <script>
 (()=>{const c=document.querySelector('[data-category-filter]'),t=document.querySelector('[data-tag-filter]');if(!c||!t)return;const g=window.KF_TAG_GROUPS||[];function rebuild(clear){const selected=clear?'':(t.dataset.selected||'');t.innerHTML='<option value="">全部标签</option>';const groups=c.value?g.filter(x=>x.value===c.value):g;groups.forEach(x=>{const o=new Option(`全部 ${x.label}（${x.count}）`,x.value);t.add(o);if(c.value)x.children.forEach(ch=>t.add(new Option(`${ch.label}（${ch.count}）`,ch.value)))});if(selected&&!Array.from(t.options).some(o=>o.value===selected))t.add(new Option(selected,selected));t.value=selected;t.dataset.selected=''}c.addEventListener('change',()=>rebuild(true));rebuild(false)})();
+</script>
+<script>
+document.querySelector('[data-select-page]')?.addEventListener('change',e=>document.querySelectorAll('[data-batch-item]').forEach(x=>x.checked=e.target.checked));
+const batchForm=document.querySelector('#library-batch-form'),batchOperation=batchForm?.querySelector('[data-batch-operation]');function syncBatchFields(){if(!batchForm)return;const op=batchOperation.value,tag=['add_tag','remove_tag'].includes(op),category=op==='set_category',review=op==='set_review',ai=op==='regenerate';for(const el of batchForm.querySelectorAll('[name="batch_tag"]')){el.hidden=!tag;el.disabled=!tag}for(const el of batchForm.querySelectorAll('[name="main_category"],[name="sub_category"]')){el.hidden=!category;el.disabled=!category}for(const el of batchForm.querySelectorAll('[name="review_status"]')){el.hidden=!review;el.disabled=!review}const kinds=batchForm.querySelector('.batch-kinds');if(kinds){kinds.hidden=!ai;kinds.querySelectorAll('input').forEach(x=>x.disabled=!ai)}}batchOperation?.addEventListener('change',syncBatchFields);syncBatchFields();
+function confirmBatch(form){const all=form.all_filtered.checked,count=all?{{ library_page.total }}:document.querySelectorAll('[data-batch-item]:checked').length;if(!count){alert('请先选择资料。');return false}const op=form.operation.options[form.operation.selectedIndex]?.text||'批量操作';return confirm(`将对 ${count} 份资料执行“${op}”。操作会进入持久化队列，确定继续？`)}
+setInterval(async()=>{const panel=document.querySelector('#batch-jobs-panel');if(!panel)return;const html=await fetch('/batch-jobs/fragment?return_to=%2Flibrary').then(r=>r.text());const box=document.createElement('div');box.innerHTML=html;const next=box.firstElementChild;if(next)panel.replaceWith(next)},2000);
 </script>
 {% endblock %}

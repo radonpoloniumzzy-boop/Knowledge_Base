@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import json
 import re
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -11,6 +13,8 @@ from uuid import uuid4
 from . import services
 from .db import connect
 from .ingestion import ImportTask
+
+import httpx
 
 
 ENHANCEMENT_KINDS = ("classification", "structure", "sop", "insight")
@@ -54,11 +58,147 @@ class EnhancementJob:
     created_at: str
     updated_at: str
     completed_at: str | None
+    provider_name: str | None
+    model_name: str | None
 
 
 class EnhancementAdapter(Protocol):
     def classify(self, title: str, text: str) -> ClassificationOutcome: ...
     def generate(self, kind: str, title: str, text: str, prompt: str) -> ArtifactOutcome: ...
+
+
+class EnhancementConfigurationError(RuntimeError):
+    """Safe, user-facing model configuration failure."""
+
+
+class EnhancementServiceError(RuntimeError):
+    """Safe, user-facing remote model failure."""
+
+
+def _http_chat_completion(config: dict[str, str], messages: list[dict[str, str]], json_mode: bool = False) -> str:
+    url = config["api_base_url"].rstrip("/") + "/chat/completions"
+    payload: dict[str, object] = {
+        "model": config["model_name"],
+        "messages": messages,
+        "temperature": 0.2,
+    }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = httpx.post(
+                url,
+                headers={"Authorization": f"Bearer {config['api_key']}"},
+                json=payload,
+                timeout=60.0,
+            )
+            if response.status_code == 429 or response.status_code >= 500:
+                raise httpx.HTTPStatusError("temporary model failure", request=response.request, response=response)
+            response.raise_for_status()
+            data = response.json()
+            return str(data["choices"][0]["message"]["content"]).strip()
+        except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
+            last_error = exc
+            retryable = not isinstance(exc, httpx.HTTPStatusError) or exc.response.status_code == 429 or exc.response.status_code >= 500
+            if not retryable or attempt == 2:
+                break
+            time.sleep((1, 3)[attempt])
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            last_error = exc
+            break
+    raise EnhancementServiceError("模型服务暂时不可用，请检查地址、模型名称或稍后重试。") from last_error
+
+
+class ConfiguredEnhancementAdapter:
+    """Selects explicit offline processing or an OpenAI-compatible endpoint per call."""
+
+    def __init__(self, database_path: Path, request_fn=None) -> None:
+        self.database_path = Path(database_path)
+        self.request_fn = request_fn or _http_chat_completion
+        self.offline = OfflineEnhancementAdapter()
+        self._last_identity = ("Offline", "local-rules")
+
+    def _configuration(self) -> dict[str, str]:
+        with connect(self.database_path) as conn:
+            rows = conn.execute(
+                "SELECT key, value FROM settings WHERE key IN ('active_provider','api_base_url','model_name','api_key_env','offline_mode')"
+            ).fetchall()
+        config = {row["key"]: row["value"] for row in rows}
+        if config.get("offline_mode", "true").lower() == "true":
+            self._last_identity = ("Offline", "local-rules")
+            return {**config, "offline_mode": "true"}
+        env_name = config.get("api_key_env", "").strip()
+        if not env_name:
+            raise EnhancementConfigurationError("请先配置 API 密钥环境变量名。")
+        api_key = os.environ.get(env_name, "").strip()
+        if not api_key:
+            raise EnhancementConfigurationError(f"未找到环境变量 {env_name}，请配置密钥后重启服务。")
+        if not config.get("api_base_url", "").strip() or not config.get("model_name", "").strip():
+            raise EnhancementConfigurationError("API 地址和模型名称不能为空。")
+        self._last_identity = (config.get("active_provider", "OpenAI-compatible"), config["model_name"])
+        return {**config, "api_key": api_key, "offline_mode": "false"}
+
+    def identity(self) -> tuple[str, str]:
+        return self._last_identity
+
+    @staticmethod
+    def _source(title: str, text: str) -> str:
+        return f"资料标题：{title}\n\n资料正文：\n{text[:60000]}"
+
+    def classify(self, title: str, text: str) -> ClassificationOutcome:
+        config = self._configuration()
+        if config["offline_mode"] == "true":
+            return self.offline.classify(title, text)
+        content = self.request_fn(
+            config,
+            [
+                {"role": "system", "content": "你是知识库分类器。只返回 JSON：category 为主分类；tags 为包含 name、confidence(0-1)、evidence 的数组。只保留贯穿全文的强相关标签。"},
+                {"role": "user", "content": self._source(title, text)},
+            ],
+            json_mode=True,
+        )
+        try:
+            payload = json.loads(re.sub(r"^```(?:json)?|```$", "", content.strip(), flags=re.IGNORECASE).strip())
+            tags = tuple(
+                AutomaticTag(
+                    str(item["name"]).strip(),
+                    max(0.0, min(1.0, float(item.get("confidence", 0.0)))),
+                    str(item.get("evidence", "")).strip()[:500],
+                )
+                for item in payload.get("tags", [])
+                if str(item.get("name", "")).strip()
+            )
+            return ClassificationOutcome(str(payload.get("category") or "00_Unsorted").strip(), tags)
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise EnhancementServiceError("模型分类结果格式不正确，可以单独重试自动分类。") from exc
+
+    def generate(self, kind: str, title: str, text: str, prompt: str) -> ArtifactOutcome:
+        config = self._configuration()
+        if config["offline_mode"] == "true":
+            return self.offline.generate(kind, title, text, prompt)
+        content = self.request_fn(
+            config,
+            [
+                {"role": "system", "content": prompt or f"请生成高质量的 {kind} Markdown 文档，忠于原文，不虚构事实。"},
+                {"role": "user", "content": self._source(title, text)},
+            ],
+            json_mode=False,
+        ).strip()
+        if not content:
+            raise EnhancementServiceError("模型返回了空内容，可以单独重试该产物。")
+        return ArtifactOutcome(content)
+
+    def test_connection(self) -> str:
+        config = self._configuration()
+        if config["offline_mode"] == "true":
+            return "当前为离线模式，不会调用远程模型。"
+        self.request_fn(
+            config,
+            [{"role": "user", "content": "只回复 OK"}],
+            json_mode=False,
+        )
+        return f"已连接 {config.get('active_provider', 'OpenAI-compatible')} / {config['model_name']}"
 
 
 class OfflineEnhancementAdapter:
@@ -188,6 +328,16 @@ class KnowledgeEnhancementQueue:
             )
         try:
             self._execute(version_id, kind)
+        except (EnhancementConfigurationError, EnhancementServiceError) as exc:
+            with connect(self.database_path) as conn:
+                conn.execute(
+                    """
+                    UPDATE knowledge_enhancement_jobs
+                    SET status='needs_attention', message=?, updated_at=CURRENT_TIMESTAMP
+                    WHERE version_id=? AND kind=?
+                    """,
+                    (str(exc), version_id, kind),
+                )
         except Exception:
             with connect(self.database_path) as conn:
                 conn.execute(
@@ -227,9 +377,11 @@ class KnowledgeEnhancementQueue:
         prompt_content = prompt["content"] if prompt else ""
         if kind == "classification":
             outcome = self.adapter.classify(version["title"], text)
-            self._commit_classification(version_id, version["standard_file_id"], outcome, prompt_version)
+            provider, model = self.adapter.identity() if hasattr(self.adapter, "identity") else (None, None)
+            self._commit_classification(version_id, version["standard_file_id"], outcome, prompt_version, provider, model)
             return
         outcome = self.adapter.generate(kind, version["title"], text, prompt_content)
+        provider, model = self.adapter.identity() if hasattr(self.adapter, "identity") else (None, None)
         if outcome.not_applicable_reason:
             with connect(self.database_path) as conn:
                 conn.execute("BEGIN IMMEDIATE")
@@ -239,20 +391,21 @@ class KnowledgeEnhancementQueue:
                 conn.execute(
                     """
                     UPDATE knowledge_enhancement_jobs
-                    SET status='not_applicable', message=?, prompt_version=?,
+                    SET status='not_applicable', message=?, prompt_version=?, provider_name=?, model_name=?,
                         completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
                     WHERE version_id=? AND kind=?
                     """,
-                    (outcome.not_applicable_reason, prompt_version, version_id, kind),
+                    (outcome.not_applicable_reason, prompt_version, provider, model, version_id, kind),
                 )
             return
         self._commit_artifact(
             version_id, version["standard_file_id"], kind, version["title"],
-            outcome.content or "", PROMPT_NAMES[kind], prompt_version,
+            outcome.content or "", PROMPT_NAMES[kind], prompt_version, provider, model,
         )
 
     def _commit_classification(
-        self, version_id: int, file_id: int, outcome: ClassificationOutcome, prompt_version: str
+        self, version_id: int, file_id: int, outcome: ClassificationOutcome, prompt_version: str,
+        provider_name: str | None = None, model_name: str | None = None,
     ) -> None:
         with connect(self.database_path) as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -279,16 +432,17 @@ class KnowledgeEnhancementQueue:
             conn.execute(
                 """
                 UPDATE knowledge_enhancement_jobs
-                SET status='completed', message=NULL, prompt_version=?,
+                SET status='completed', message=NULL, prompt_version=?, provider_name=?, model_name=?,
                     completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
                 WHERE version_id=? AND kind='classification'
                 """,
-                (prompt_version, version_id),
+                (prompt_version, provider_name, model_name, version_id),
             )
 
     def _commit_artifact(
         self, version_id: int, file_id: int, kind: str, title: str,
         content: str, prompt_name: str, prompt_version: str,
+        provider_name: str | None = None, model_name: str | None = None,
     ) -> None:
         target_dir = self.artifact_dir / str(file_id)
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -304,19 +458,19 @@ class KnowledgeEnhancementQueue:
                 os.replace(temporary, target)
                 artifact_id = conn.execute(
                     """
-                    INSERT INTO artifacts(file_id, artifact_type, path, title, prompt_name, prompt_version)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO artifacts(file_id, artifact_type, path, title, prompt_name, prompt_version, provider_name, model_name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (file_id, kind, str(target), title, prompt_name, prompt_version),
+                    (file_id, kind, str(target), title, prompt_name, prompt_version, provider_name, model_name),
                 ).lastrowid
                 conn.execute(
                     """
                     UPDATE knowledge_enhancement_jobs
-                    SET status='completed', message=NULL, prompt_version=?, artifact_id=?,
+                    SET status='completed', message=NULL, prompt_version=?, artifact_id=?, provider_name=?, model_name=?,
                         completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
                     WHERE version_id=? AND kind=?
                     """,
-                    (prompt_version, artifact_id, version_id, kind),
+                    (prompt_version, artifact_id, provider_name, model_name, version_id, kind),
                 )
         except Exception:
             target.unlink(missing_ok=True)

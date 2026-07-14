@@ -1,0 +1,17 @@
+<div id="batch-jobs-panel" data-return-to="{{ return_to }}">
+{% if batch_jobs %}
+<section class="batch-status-panel">
+  <div class="panel-head"><h2>批量任务</h2><span>持久化串行处理</span></div>
+  <div class="batch-status-list">
+  {% for job in batch_jobs[:8] %}
+    <article class="batch-status-item {{ job.status }}">
+      <div><strong>#{{ job.id }} · {% if job.operation=='add_tag' %}增加标签{% elif job.operation=='remove_tag' %}移除标签{% elif job.operation=='set_category' %}修改分类{% elif job.operation=='set_review' %}修改复核状态{% elif job.operation=='regenerate' %}重新生成 AI 产物{% elif job.operation=='reprocess' %}完整重新炼制{% elif job.operation=='recycle' %}移入回收站{% else %}恢复资料{% endif %}</strong><span>{{ job.completed_count }}/{{ job.total_count }} 完成{% if job.failed_count %} · {{ job.failed_count }} 失败{% endif %}</span></div>
+      <div class="batch-progress"><span style="width:{{ ((job.completed_count + job.failed_count) * 100 / job.total_count) if job.total_count else 0 }}%"></span></div>
+      <span class="badge {{ job.status }}">{{ job.status }}</span>
+      {% if job.status in ['waiting','processing'] %}<form action="/batch-jobs/{{ job.id }}/pause" method="post"><input type="hidden" name="return_to" value="{{ return_to }}"><button class="btn tiny">暂停</button></form>{% elif job.status in ['paused','needs_attention'] %}<form action="/batch-jobs/{{ job.id }}/resume" method="post"><input type="hidden" name="return_to" value="{{ return_to }}"><button class="btn tiny">继续</button></form>{% endif %}
+    </article>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+</div>

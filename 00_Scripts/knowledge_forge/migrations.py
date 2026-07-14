@@ -460,6 +460,38 @@ def _add_configurable_knowledge_domains(conn: sqlite3.Connection) -> None:
             )
 
 
+def _add_batch_operations_and_model_tracking(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        ALTER TABLE source_versions ADD COLUMN reprocess_of_version_id INTEGER;
+        ALTER TABLE knowledge_enhancement_jobs ADD COLUMN provider_name TEXT;
+        ALTER TABLE knowledge_enhancement_jobs ADD COLUMN model_name TEXT;
+        ALTER TABLE artifacts ADD COLUMN provider_name TEXT;
+        ALTER TABLE artifacts ADD COLUMN model_name TEXT;
+        ALTER TABLE files ADD COLUMN review_status TEXT NOT NULL DEFAULT 'unreviewed';
+        CREATE TABLE batch_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operation TEXT NOT NULL,
+            parameters_json TEXT NOT NULL DEFAULT '{}', selection_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'waiting', total_count INTEGER NOT NULL DEFAULT 0,
+            completed_count INTEGER NOT NULL DEFAULT 0, failed_count INTEGER NOT NULL DEFAULT 0,
+            current_item_id INTEGER, message TEXT, pause_requested INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT
+        );
+        CREATE TABLE batch_job_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, batch_job_id INTEGER NOT NULL,
+            file_id INTEGER, source_id INTEGER, status TEXT NOT NULL DEFAULT 'waiting',
+            message TEXT, linked_task_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(batch_job_id, file_id), FOREIGN KEY(batch_job_id) REFERENCES batch_jobs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX idx_batch_jobs_status ON batch_jobs(status, id);
+        CREATE INDEX idx_batch_items_ready ON batch_job_items(batch_job_id, status, id);
+        """
+    )
+
+
 DEFAULT_MIGRATIONS = (
     Migration(1, "initial-schema", _apply_initial_schema),
     Migration(2, "persistent-text-import-queue", _add_persistent_import_queue),
@@ -473,6 +505,7 @@ DEFAULT_MIGRATIONS = (
     Migration(10, "contract-legacy-import-settings", _contract_legacy_import_settings),
     Migration(11, "pack-visual-identity", _add_pack_visual_identity),
     Migration(12, "configurable-knowledge-domains", _add_configurable_knowledge_domains),
+    Migration(13, "online-model-and-batch-operations", _add_batch_operations_and_model_tracking),
 )
 
 
